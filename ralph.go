@@ -27,6 +27,9 @@ type Config struct {
 	TypeCheckCmd string
 	TestCmd      string
 	Verbose      bool
+	ListStatus   bool
+	ListTested   bool
+	ListUntested bool
 }
 
 // Plan represents the structure of a plan file
@@ -42,6 +45,15 @@ type Plan struct {
 
 func main() {
 	config := parseFlags()
+
+	// Handle list commands (don't require iterations)
+	if config.ListStatus || config.ListTested || config.ListUntested {
+		if err := listPlanStatus(config); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if err := validateConfig(config); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -69,11 +81,19 @@ func parseFlags() *Config {
 	flag.StringVar(&config.TestCmd, "test", "pnpm test", "Command to run for testing")
 	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose output")
 	flag.BoolVar(&config.Verbose, "v", false, "Enable verbose output (shorthand)")
+	flag.BoolVar(&config.ListStatus, "status", false, "List plan status (tested and untested features)")
+	flag.BoolVar(&config.ListTested, "list-tested", false, "List only tested features")
+	flag.BoolVar(&config.ListUntested, "list-untested", false, "List only untested features")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -status                          # Show plan status\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-tested                     # List tested features\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-untested                   # List untested features\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -82,6 +102,14 @@ func parseFlags() *Config {
 }
 
 func validateConfig(config *Config) error {
+	// Skip iteration validation if we're just listing status
+	if config.ListStatus || config.ListTested || config.ListUntested {
+		if _, err := os.Stat(config.PlanFile); os.IsNotExist(err) {
+			return fmt.Errorf("plan file not found: %s", config.PlanFile)
+		}
+		return nil
+	}
+
 	if config.Iterations <= 0 {
 		return fmt.Errorf("iterations must be a positive integer (use -iterations flag)")
 	}
@@ -259,7 +287,7 @@ func buildPrompt(config *Config) string {
 	return prompt
 }
 
-// Helper function to read plan file (for potential future use)
+// Helper function to read plan file
 func readPlanFile(path string) ([]Plan, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -272,6 +300,81 @@ func readPlanFile(path string) ([]Plan, error) {
 	}
 
 	return plans, nil
+}
+
+// listPlanStatus displays plan status (tested/untested features)
+func listPlanStatus(config *Config) error {
+	plans, err := readPlanFile(config.PlanFile)
+	if err != nil {
+		return err
+	}
+
+	// Determine what to show
+	showTested := config.ListStatus || config.ListTested
+	showUntested := config.ListStatus || config.ListUntested
+
+	if showTested {
+		fmt.Printf("=== Tested Features (from %s) ===\n", config.PlanFile)
+		tested := filterPlans(plans, true)
+		if len(tested) == 0 {
+			fmt.Println("No tested features found")
+		} else {
+			printPlans(tested)
+		}
+		fmt.Println()
+	}
+
+	if showUntested {
+		fmt.Printf("=== Untested Features (from %s) ===\n", config.PlanFile)
+		untested := filterPlans(plans, false)
+		if len(untested) == 0 {
+			fmt.Println("No untested features found")
+		} else {
+			printPlans(untested)
+		}
+	}
+
+	return nil
+}
+
+// filterPlans filters plans by tested status
+func filterPlans(plans []Plan, tested bool) []Plan {
+	var result []Plan
+	for _, plan := range plans {
+		if plan.Tested == tested {
+			result = append(result, plan)
+		}
+	}
+	return result
+}
+
+// printPlans prints plans in a formatted table
+func printPlans(plans []Plan) {
+	// Find max widths for formatting
+	maxIDLen := 0
+	maxCatLen := 0
+	for _, plan := range plans {
+		idLen := len(fmt.Sprintf("%d", plan.ID))
+		if idLen > maxIDLen {
+			maxIDLen = idLen
+		}
+		if len(plan.Category) > maxCatLen {
+			maxCatLen = len(plan.Category)
+		}
+	}
+
+	// Ensure minimum widths
+	if maxIDLen < 2 {
+		maxIDLen = 2
+	}
+	if maxCatLen < 8 {
+		maxCatLen = 8
+	}
+
+	// Print formatted output
+	for _, plan := range plans {
+		fmt.Printf("%-*d  %-*s  %s\n", maxIDLen, plan.ID, maxCatLen, plan.Category, plan.Description)
+	}
 }
 
 // Helper function to append to progress file (for potential future use)
