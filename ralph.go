@@ -12,6 +12,11 @@ import (
 	"time"
 )
 
+var (
+	// Version is set at build time via ldflags
+	Version = "dev"
+)
+
 const (
 	completeSignal      = "<promise>COMPLETE</promise>"
 	defaultPlanFile     = "plan.json"
@@ -109,6 +114,7 @@ func parseFlags() *Config {
 	flag.StringVar(&config.OutputPlanFile, "output", defaultPlanFile, "Output plan file path (default: plan.json)")
 
 	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Ralph v%s - AI-Assisted Development Workflow CLI\n\n", Version)
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()

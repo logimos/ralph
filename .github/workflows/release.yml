@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on tags like v1.0.0, v2.1.3, etc.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and upload assets
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper version detection
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building release for version: $VERSION"
+
+      - name: Build Linux AMD64
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o ralph-linux-amd64 ralph.go
+
+      - name: Build Linux ARM64
+        run: |
+          GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o ralph-linux-arm64 ralph.go
+
+      - name: Build macOS AMD64
+        run: |
+          GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o ralph-darwin-amd64 ralph.go
+
+      - name: Build macOS ARM64
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o ralph-darwin-arm64 ralph.go
+
+      - name: Build Windows AMD64
+        run: |
+          GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o ralph-windows-amd64.exe ralph.go
+
+      - name: Create checksums
+        run: |
+          sha256sum ralph-* > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Release ${{ steps.version.outputs.version }}
+            
+            ### Binaries
+            
+            - `ralph-linux-amd64` - Linux (x86_64)
+            - `ralph-linux-arm64` - Linux (ARM64)
+            - `ralph-darwin-amd64` - macOS (Intel)
+            - `ralph-darwin-arm64` - macOS (Apple Silicon)
+            - `ralph-windows-amd64.exe` - Windows (x86_64)
+            
+            ### Installation
+            
+            Download the appropriate binary for your platform and make it executable:
+            
+            ```bash
+            # Linux/macOS
+            chmod +x ralph-*-amd64
+            mv ralph-*-amd64 /usr/local/bin/ralph
+            
+            # Windows
+            # Rename ralph-windows-amd64.exe to ralph.exe and add to PATH
+            ```
+            
+            ### Verification
+            
+            Verify the checksums:
+            
+            ```bash
+            sha256sum -c checksums.txt
+            ```
+          files: |
+            ralph-linux-amd64
+            ralph-linux-arm64
+            ralph-darwin-amd64
+            ralph-darwin-arm64
+            ralph-windows-amd64.exe
+            checksums.txt
+          draft: false
+          prerelease: false
+
