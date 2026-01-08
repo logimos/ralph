@@ -54,12 +54,19 @@ This builds and installs the current version to `$GOPATH/bin` or `$GOBIN` for te
 
 ## Usage
 
+### Check Version
+
+```bash
+# Show version information
+ralph -version
+```
+
 ### Basic Workflow
 
 Run iterative development cycles:
 
 ```bash
-# Run 5 iterations
+# Run 5 iterations (auto-detects build system)
 ralph -iterations 5
 
 # With verbose output
@@ -71,6 +78,11 @@ ralph -iterations 5 -plan my-plan.json
 # Use Cursor Agent (default) or Claude
 ralph -iterations 5 -agent cursor-agent
 ralph -iterations 5 -agent claude
+
+# Specify build system explicitly
+ralph -iterations 5 -build-system gradle
+ralph -iterations 5 -build-system maven
+ralph -iterations 5 -build-system cargo
 ```
 
 ### Plan Management
@@ -114,6 +126,8 @@ Usage: ralph [options]
 Options:
   -agent string
         Command name for the AI agent CLI tool (default "cursor-agent")
+  -build-system string
+        Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection
   -generate-plan
         Generate plan.json from notes file
   -iterations int
@@ -133,11 +147,53 @@ Options:
   -status
         List plan status (tested and untested features)
   -test string
-        Command to run for testing (default "pnpm test")
+        Command to run for testing (overrides build-system preset)
   -typecheck string
-        Command to run for type checking (default "pnpm typecheck")
+        Command to run for type checking (overrides build-system preset)
   -v, -verbose
         Enable verbose output
+  -version
+        Show version information and exit
+```
+
+### Build System Support
+
+Ralph supports multiple build systems with auto-detection and presets:
+
+**Supported Build Systems:**
+- **pnpm** - `pnpm typecheck` / `pnpm test` (default)
+- **npm** - `npm run typecheck` / `npm test`
+- **yarn** - `yarn typecheck` / `yarn test`
+- **gradle** - `./gradlew check` / `./gradlew test`
+- **maven** - `mvn compile` / `mvn test`
+- **cargo** - `cargo check` / `cargo test`
+- **go** - `go build ./...` / `go test ./...`
+- **python** - `mypy .` / `pytest`
+
+**Auto-Detection:**
+Ralph automatically detects the build system by checking for common project files:
+- `build.gradle` or `gradlew` → Gradle
+- `pom.xml` → Maven
+- `Cargo.toml` → Cargo (Rust)
+- `go.mod` → Go
+- `setup.py`, `pyproject.toml`, or `requirements.txt` → Python
+- `pnpm-lock.yaml` → pnpm
+- `yarn.lock` → Yarn
+- `package.json` → npm
+
+**Usage Examples:**
+```bash
+# Auto-detect build system (default behavior)
+ralph -iterations 5
+
+# Explicitly specify build system
+ralph -iterations 5 -build-system gradle
+
+# Use auto-detection explicitly
+ralph -iterations 5 -build-system auto
+
+# Override individual commands
+ralph -iterations 5 -build-system gradle -test "./gradlew test --tests MyTest"
 ```
 
 ## Plan File Format
@@ -262,6 +318,55 @@ make install-local
 
 This builds and installs to `$GOPATH/bin` or `$GOBIN`, allowing you to test your changes immediately.
 
+## Versioning
+
+Ralph uses [Semantic Versioning](https://semver.org/) (SemVer) for version numbers in the format `MAJOR.MINOR.PATCH` (e.g., `v1.2.3`).
+
+### Version Numbering
+
+- **MAJOR** version: Incremented for incompatible API changes or breaking changes
+  - Breaking changes to CLI flags or behavior
+  - Removing deprecated features
+  - Major architectural changes
+  
+- **MINOR** version: Incremented for new functionality in a backward-compatible manner
+  - New features (e.g., new build system support)
+  - New CLI flags or options
+  - Enhancements that don't break existing workflows
+  
+- **PATCH** version: Incremented for backward-compatible bug fixes
+  - Bug fixes
+  - Security patches
+  - Documentation improvements
+  - Performance improvements
+
+### Examples
+
+- `v1.0.0` → `v1.0.1`: Bug fix (patch) - e.g., fixing a build system detection issue
+- `v1.0.0` → `v1.1.0`: New feature (minor) - e.g., adding Gradle support
+- `v1.0.0` → `v2.0.0`: Breaking change (major) - e.g., changing required flag names
+
+### Checking Your Version
+
+```bash
+# Check installed version
+ralph -version
+
+# Output: ralph version v1.2.3
+```
+
+The version is embedded at build time and displayed in:
+- `ralph -version` command output
+- `ralph -help` usage message
+- GitHub release binaries
+
+**Version Detection:**
+- **Local builds**: Version is automatically detected from git tags using `git describe --tags`
+- **GitHub Actions**: Version is extracted from the git tag that triggers the release workflow
+- **Development builds**: Shows "dev" if no git tags are found
+
+When building locally with `make build`, ralph will automatically use the latest git tag version (e.g., `v0.0.1`). When GitHub Actions builds a release, it uses the semantic version tag (e.g., `v1.2.3`) that triggered the workflow.
+
 ## Releases
 
 ### Creating Releases
@@ -280,7 +385,7 @@ make release-major
 ```
 
 These commands will:
-1. Calculate the new version based on the latest git tag
+1. Calculate the new version based on the latest git tag using semantic versioning
 2. Build binaries for multiple platforms:
    - Linux (amd64, arm64)
    - macOS (amd64, arm64)
@@ -290,26 +395,55 @@ These commands will:
 
 ### Release Workflow
 
-The release process is automated via GitHub Actions:
+The release process follows semantic versioning and is automated via GitHub Actions:
 
-1. Run a release command to build binaries locally (optional, for testing):
+1. **Determine version bump type:**
+   - **Patch** (`release-patch`): Bug fixes, security patches, minor corrections
+   - **Minor** (`release-minor`): New features, enhancements, backward-compatible changes
+   - **Major** (`release-major`): Breaking changes, major refactoring, incompatible API changes
+
+2. Run a release command to build binaries locally (optional, for testing):
    ```bash
    make release-patch  # or release-minor, release-major
    ```
 
-2. Create and push the git tag:
+3. Review the version in `.version` file and create/push the git tag:
    ```bash
-   git tag v1.0.1  # Use the version shown in .version file
+   cat .version  # Verify version (e.g., v1.0.1)
+   git tag v1.0.1
    git push origin v1.0.1
    ```
 
-3. **GitHub Actions automatically:**
+4. **GitHub Actions automatically:**
    - Detects the tag push
    - Builds binaries for all platforms (Linux, macOS, Windows)
-   - Creates a GitHub release
+   - Creates a GitHub release with the semantic version tag
    - Uploads all binaries and checksums
 
-**Note**: If no git tags exist yet, the first release will start at `v0.0.1` (patch), `v0.1.0` (minor), or `v1.0.0` (major).
+**Note**: If no git tags exist yet, the first release will start at:
+- `v0.0.1` for patch releases
+- `v0.1.0` for minor releases  
+- `v1.0.0` for major releases
+
+### Semantic Versioning with GitHub Actions
+
+When you push a semantic version tag (e.g., `v1.2.3`), GitHub Actions automatically:
+
+1. **Extracts the version** from the git tag (`v1.2.3`)
+2. **Validates the format** to ensure it matches semantic versioning (`vMAJOR.MINOR.PATCH`)
+3. **Builds binaries** for all platforms with the version embedded via ldflags
+4. **Creates a GitHub release** with the correct version number
+5. **Uploads binaries** that will show the correct version when users run `ralph -version`
+
+**Important**: Always use semantic version tags (e.g., `v0.0.1`, `v1.2.3`) - the workflow validates this format and will fail if the tag doesn't match.
+
+### Local Development Versioning
+
+When building locally:
+- Use `make build` to automatically detect version from git tags
+- The version will be extracted from the latest git tag (e.g., `v0.0.1`)
+- If no tags exist, it defaults to `dev`
+- Uncommitted changes are handled gracefully (the `-dirty` suffix is stripped)
 
 ### Manual Release (Local Testing)
 

@@ -12,7 +12,11 @@ GO_VET=$(GO_CMD) vet
 GO_MOD=$(GO_CMD) mod
 
 # Version management
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+# Try to get version from git tag, strip any suffix like -dirty, -1-g1234567, etc.
+# Falls back to "dev" if git is not available or no tags exist
+# This ensures semantic versioning works correctly for both local builds and CI/CD
+GIT_DESCRIBE = $(shell git describe --tags --always --dirty 2>/dev/null)
+VERSION ?= $(shell if [ -n "$(GIT_DESCRIBE)" ]; then echo "$(GIT_DESCRIBE)" | sed 's/-.*//'; else echo "dev"; fi)
 GIT_TAG = $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 VERSION_MAJOR = $(shell echo $(GIT_TAG) | sed 's/v\([0-9]*\).*/\1/' | grep -q '^[0-9]' && echo $(shell echo $(GIT_TAG) | sed 's/v\([0-9]*\).*/\1/') || echo "0")
 VERSION_MINOR = $(shell echo $(GIT_TAG) | sed 's/v[0-9]*\.\([0-9]*\).*/\1/' | grep -q '^[0-9]' && echo $(shell echo $(GIT_TAG) | sed 's/v[0-9]*\.\([0-9]*\).*/\1/') || echo "0")

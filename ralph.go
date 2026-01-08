@@ -23,6 +23,118 @@ const (
 	defaultProgressFile = "progress.txt"
 )
 
+// detectBuildSystem attempts to detect the build system from project files
+func detectBuildSystem() string {
+	// Check for Gradle
+	if _, err := os.Stat("build.gradle"); err == nil {
+		return "gradle"
+	}
+	if _, err := os.Stat("build.gradle.kts"); err == nil {
+		return "gradle"
+	}
+	if _, err := os.Stat("gradlew"); err == nil {
+		return "gradle"
+	}
+
+	// Check for Maven
+	if _, err := os.Stat("pom.xml"); err == nil {
+		return "maven"
+	}
+
+	// Check for Cargo (Rust)
+	if _, err := os.Stat("Cargo.toml"); err == nil {
+		return "cargo"
+	}
+
+	// Check for Go modules
+	if _, err := os.Stat("go.mod"); err == nil {
+		return "go"
+	}
+
+	// Check for Python (common indicators)
+	if _, err := os.Stat("setup.py"); err == nil {
+		return "python"
+	}
+	if _, err := os.Stat("pyproject.toml"); err == nil {
+		return "python"
+	}
+	if _, err := os.Stat("requirements.txt"); err == nil {
+		return "python"
+	}
+
+	// Check for pnpm (has pnpm-lock.yaml)
+	if _, err := os.Stat("pnpm-lock.yaml"); err == nil {
+		return "pnpm"
+	}
+
+	// Check for yarn (has yarn.lock)
+	if _, err := os.Stat("yarn.lock"); err == nil {
+		return "yarn"
+	}
+
+	// Check for npm (has package.json, but no lock file means npm)
+	if _, err := os.Stat("package.json"); err == nil {
+		return "npm"
+	}
+
+	// Default to pnpm for backward compatibility
+	return "pnpm"
+}
+
+// applyBuildSystemConfig applies build system presets or auto-detection
+func applyBuildSystemConfig(config *Config) {
+	// If both typecheck and test are explicitly set, don't override
+	if config.TypeCheckCmd != "" && config.TestCmd != "" {
+		return
+	}
+
+	var buildSystem string
+
+	// Determine which build system to use
+	if config.BuildSystem != "" {
+		if config.BuildSystem == "auto" {
+			buildSystem = detectBuildSystem()
+			if config.Verbose {
+				fmt.Printf("Auto-detected build system: %s\n", buildSystem)
+			}
+		} else {
+			buildSystem = config.BuildSystem
+		}
+	} else {
+		// Auto-detect if neither build-system nor individual commands are set
+		if config.TypeCheckCmd == "" && config.TestCmd == "" {
+			buildSystem = detectBuildSystem()
+			if config.Verbose {
+				fmt.Printf("Auto-detected build system: %s\n", buildSystem)
+			}
+		} else {
+			// Use defaults if only one command is set
+			buildSystem = "pnpm"
+		}
+	}
+
+	// Apply preset if available
+	if preset, ok := BuildSystemPresets[buildSystem]; ok {
+		if config.TypeCheckCmd == "" {
+			config.TypeCheckCmd = preset.TypeCheck
+		}
+		if config.TestCmd == "" {
+			config.TestCmd = preset.Test
+		}
+	} else {
+		// Unknown build system, use defaults
+		if config.TypeCheckCmd == "" {
+			config.TypeCheckCmd = BuildSystemPresets["pnpm"].TypeCheck
+		}
+		if config.TestCmd == "" {
+			config.TestCmd = BuildSystemPresets["pnpm"].Test
+		}
+		if config.Verbose {
+			fmt.Printf("Warning: Unknown build system '%s', using pnpm defaults\n", buildSystem)
+		}
+	}
+}
+
 // Config holds the application configuration
 type Config struct {
 	PlanFile       string
@@ -31,13 +143,54 @@ type Config struct {
 	AgentCmd       string
 	TypeCheckCmd   string
 	TestCmd        string
+	BuildSystem    string
 	Verbose        bool
+	ShowVersion    bool
 	ListStatus     bool
 	ListTested     bool
 	ListUntested   bool
 	GeneratePlan   bool
 	NotesFile      string
 	OutputPlanFile string
+}
+
+// BuildSystemPresets defines commands for common build systems
+var BuildSystemPresets = map[string]struct {
+	TypeCheck string
+	Test      string
+}{
+	"pnpm": {
+		TypeCheck: "pnpm typecheck",
+		Test:      "pnpm test",
+	},
+	"npm": {
+		TypeCheck: "npm run typecheck",
+		Test:      "npm test",
+	},
+	"yarn": {
+		TypeCheck: "yarn typecheck",
+		Test:      "yarn test",
+	},
+	"gradle": {
+		TypeCheck: "./gradlew check",
+		Test:      "./gradlew test",
+	},
+	"maven": {
+		TypeCheck: "mvn compile",
+		Test:      "mvn test",
+	},
+	"cargo": {
+		TypeCheck: "cargo check",
+		Test:      "cargo test",
+	},
+	"go": {
+		TypeCheck: "go build ./...",
+		Test:      "go test ./...",
+	},
+	"python": {
+		TypeCheck: "mypy .",
+		Test:      "pytest",
+	},
 }
 
 // Plan represents the structure of a plan file
@@ -53,6 +206,12 @@ type Plan struct {
 
 func main() {
 	config := parseFlags()
+
+	// Handle version command (exit early)
+	if config.ShowVersion {
+		fmt.Printf("ralph version %s\n", Version)
+		os.Exit(0)
+	}
 
 	// Handle generate-plan command
 	if config.GeneratePlan {
@@ -102,10 +261,12 @@ func parseFlags() *Config {
 	flag.StringVar(&config.ProgressFile, "progress", defaultProgressFile, "Path to the progress file (e.g., progress.txt)")
 	flag.IntVar(&config.Iterations, "iterations", 0, "Number of iterations to run (required)")
 	flag.StringVar(&config.AgentCmd, "agent", "cursor-agent", "Command name for the AI agent CLI tool")
-	flag.StringVar(&config.TypeCheckCmd, "typecheck", "pnpm typecheck", "Command to run for type checking")
-	flag.StringVar(&config.TestCmd, "test", "pnpm test", "Command to run for testing")
+	flag.StringVar(&config.BuildSystem, "build-system", "", "Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection")
+	flag.StringVar(&config.TypeCheckCmd, "typecheck", "", "Command to run for type checking (overrides build-system preset)")
+	flag.StringVar(&config.TestCmd, "test", "", "Command to run for testing (overrides build-system preset)")
 	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose output")
 	flag.BoolVar(&config.Verbose, "v", false, "Enable verbose output (shorthand)")
+	flag.BoolVar(&config.ShowVersion, "version", false, "Show version information and exit")
 	flag.BoolVar(&config.ListStatus, "status", false, "List plan status (tested and untested features)")
 	flag.BoolVar(&config.ListTested, "list-tested", false, "List only tested features")
 	flag.BoolVar(&config.ListUntested, "list-untested", false, "List only untested features")
@@ -114,12 +275,29 @@ func parseFlags() *Config {
 	flag.StringVar(&config.OutputPlanFile, "output", defaultPlanFile, "Output plan file path (default: plan.json)")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Ralph v%s - AI-Assisted Development Workflow CLI\n\n", Version)
+		// Version already includes 'v' prefix from git tags, so don't add another
+		versionDisplay := Version
+		if !strings.HasPrefix(Version, "v") && Version != "dev" {
+			versionDisplay = "v" + Version
+		}
+		fmt.Fprintf(os.Stderr, "Ralph %s - AI-Assisted Development Workflow CLI\n\n", versionDisplay)
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nBuild System Presets:\n")
+		fmt.Fprintf(os.Stderr, "  pnpm    - pnpm typecheck / pnpm test\n")
+		fmt.Fprintf(os.Stderr, "  npm     - npm run typecheck / npm test\n")
+		fmt.Fprintf(os.Stderr, "  yarn    - yarn typecheck / yarn test\n")
+		fmt.Fprintf(os.Stderr, "  gradle  - ./gradlew check / ./gradlew test\n")
+		fmt.Fprintf(os.Stderr, "  maven   - mvn compile / mvn test\n")
+		fmt.Fprintf(os.Stderr, "  cargo   - cargo check / cargo test\n")
+		fmt.Fprintf(os.Stderr, "  go      - go build ./... / go test ./...\n")
+		fmt.Fprintf(os.Stderr, "  python  - mypy . / pytest\n")
+		fmt.Fprintf(os.Stderr, "  auto    - Auto-detect from project files\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -build-system gradle  # Use Gradle preset\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -status                          # Show plan status\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-tested                     # List tested features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-untested                   # List untested features\n", os.Args[0])
@@ -128,6 +306,9 @@ func parseFlags() *Config {
 	}
 
 	flag.Parse()
+
+	// Apply build system configuration
+	applyBuildSystemConfig(config)
 
 	return config
 }
