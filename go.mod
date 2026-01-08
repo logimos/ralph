@@ -1,4 +1,4 @@
-module github.com/start-it/ralph
+module github.com/logimos/ralph
 
-go 1.21
+go 1.24
 
