@@ -9,13 +9,112 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 var (
-	// Version is set at build time via ldflags
+	// Version is set at build time via ldflags, or detected at runtime
+	// Use GetVersion() to access the version, which handles runtime detection
 	Version = "dev"
 )
+
+var (
+	versionOnce     sync.Once
+	detectedVersion string
+)
+
+// GetVersion returns the version, detecting it at runtime if not set via ldflags
+func GetVersion() string {
+	return getVersion()
+}
+
+// getVersion returns the version, with lazy detection if needed
+func getVersion() string {
+	versionOnce.Do(func() {
+		// If Version was set via ldflags (not "dev"), use it directly
+		if Version != "dev" {
+			detectedVersion = Version
+			return
+		}
+		// Otherwise, try to detect it at runtime
+		detectedVersion = detectVersion()
+	})
+	return detectedVersion
+}
+
+// detectVersion attempts to detect the version at runtime
+func detectVersion() string {
+	// Try to get version from go list (works for go install @version)
+	if goVersion := getGoListVersion(); goVersion != "" {
+		return goVersion
+	}
+
+	// Try git describe (works for local builds and source installs)
+	if gitVersion := getGitVersion(); gitVersion != "" {
+		return gitVersion
+	}
+
+	// Return "dev" as fallback
+	return "dev"
+}
+
+// getGoListVersion attempts to get version using `go list -m`
+func getGoListVersion() string {
+	// Try to get the version of the installed module
+	cmd := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "github.com/logimos/ralph")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	version := strings.TrimSpace(string(output))
+	// Only return if it looks like a version tag
+	if strings.HasPrefix(version, "v") && len(version) > 1 && version != "(devel)" {
+		return version
+	}
+	return ""
+}
+
+// getGitVersion attempts to get version from git tags
+func getGitVersion() string {
+	// Try to find the git root by checking current directory and parents
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	// Walk up the directory tree to find .git
+	for {
+		gitDir := filepath.Join(dir, ".git")
+		if _, err := os.Stat(gitDir); err == nil {
+			// Found git repo, try to get version
+			cmd := exec.Command("git", "describe", "--tags", "--always", "--dirty")
+			cmd.Dir = dir
+			output, err := cmd.Output()
+			if err != nil {
+				return ""
+			}
+			version := strings.TrimSpace(string(output))
+			// Strip any suffix like -dirty, -1-g1234567, etc.
+			if idx := strings.Index(version, "-"); idx != -1 {
+				version = version[:idx]
+			}
+			// Only return if it looks like a version tag
+			if strings.HasPrefix(version, "v") && len(version) > 1 {
+				return version
+			}
+			return ""
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // Reached filesystem root
+		}
+		dir = parent
+	}
+
+	return ""
+}
 
 const (
 	completeSignal      = "<promise>COMPLETE</promise>"
@@ -209,7 +308,7 @@ func main() {
 
 	// Handle version command (exit early)
 	if config.ShowVersion {
-		fmt.Printf("ralph version %s\n", Version)
+		fmt.Printf("ralph version %s\n", getVersion())
 		os.Exit(0)
 	}
 
@@ -276,9 +375,10 @@ func parseFlags() *Config {
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
-		versionDisplay := Version
-		if !strings.HasPrefix(Version, "v") && Version != "dev" {
-			versionDisplay = "v" + Version
+		ver := getVersion()
+		versionDisplay := ver
+		if !strings.HasPrefix(ver, "v") && ver != "dev" {
+			versionDisplay = "v" + ver
 		}
 		fmt.Fprintf(os.Stderr, "Ralph %s - AI-Assisted Development Workflow CLI\n\n", versionDisplay)
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
@@ -626,18 +726,21 @@ func generatePlanFromNotes(config *Config) error {
 func buildPlanGenerationPrompt(notesPath, outputPath string) string {
 	prompt := fmt.Sprintf("@%s ", notesPath)
 	prompt += "Analyze this notes file and create a comprehensive, step-by-step implementation plan in JSON format. "
+	prompt += "The plan should follow a sequential story-based methodology where completion and verification of one story is mandatory before starting the next. "
 	prompt += "The plan should be saved as a JSON file at: " + outputPath + " "
 	prompt += "The JSON must be a valid array of plan objects, each with the following structure: "
-	prompt += "{ \"id\": number, \"category\": string (e.g., \"chore\", \"infra\", \"db\", \"ui\", \"feature\", \"other\"), "
-	prompt += "\"description\": string (clear, actionable description), "
-	prompt += "\"steps\": [string] (array of specific, implementable steps), "
-	prompt += "\"expected_output\": string (what success looks like), "
-	prompt += "\"tested\": boolean (default false) }. "
-	prompt += "Break down the notes into logical, sequential features/tasks. "
-	prompt += "Each plan item should be self-contained and implementable. "
-	prompt += "Categories should reflect the type of work: 'chore' for setup/tooling, 'infra' for infrastructure, "
-	prompt += "'db' for database work, 'ui' for frontend, 'feature' for features, 'other' for core logic/services. "
-	prompt += "Ensure the JSON is valid and properly formatted. "
+	prompt += "{ \"id\": number, \"category\": string (one of: \"infra\", \"ui\", \"db\", \"data\", \"other\", \"chore\"), "
+	prompt += "\"description\": string (clear explanation of what the story accomplishes), "
+	prompt += "\"steps\": [string] (array of specific, actionable tasks required to complete the story), "
+	prompt += "\"expected_output\": string (concrete, measurable outcome that indicates story completion), "
+	prompt += "\"tested\": boolean (default false) indicating whether the story has been tested, "
+	prompt += "}. "
+	prompt += "Stories should be ordered by logical dependency (e.g., database schema before data population, API endpoints before UI components that consume them, authentication before protected features). "
+	prompt += "Each story must be: independently completable and testable, have clear acceptance criteria in the expected_output field, break down complex features into manageable sequential tasks, and specify all technical steps needed for implementation. "
+	prompt += "The development approach requires building, testing, and verifying each piece of functionality before moving to the next, ensuring quality and stability at every stage before progression. "
+	prompt += "When analyzing the notes, identify: core infrastructure requirements (servers, databases, APIs, authentication), data models and relationships, user-facing features and interfaces, integration points between components, and testing and quality assurance needs. "
+	prompt += "Categories should reflect the type of work: 'chore' for setup/tooling, 'infra' for infrastructure, 'db' for database work, 'ui' for frontend, 'data' for data-related work, 'other' for core logic/services. "
+	prompt += "Ensure the JSON is valid, properly formatted, and contains no syntax errors. Each story should be sufficiently detailed that a developer can implement it without ambiguity. "
 	prompt += "Write the complete JSON array to the file: " + outputPath
 
 	return prompt
