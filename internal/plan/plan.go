@@ -7,19 +7,40 @@ import (
 	"os"
 )
 
+// ValidationDefinition represents a validation rule for a feature
+type ValidationDefinition struct {
+	Type           string            `json:"type"`                       // http_get, http_post, cli_command, file_exists, output_contains
+	URL            string            `json:"url,omitempty"`              // For HTTP validations
+	Method         string            `json:"method,omitempty"`           // HTTP method (defaults based on type)
+	Body           string            `json:"body,omitempty"`             // Request body for POST
+	Headers        map[string]string `json:"headers,omitempty"`          // HTTP headers
+	ExpectedStatus int               `json:"expected_status,omitempty"`  // Expected HTTP status code
+	ExpectedBody   string            `json:"expected_body,omitempty"`    // Expected response body pattern (regex)
+	Command        string            `json:"command,omitempty"`          // For CLI validations
+	Args           []string          `json:"args,omitempty"`             // Command arguments
+	Path           string            `json:"path,omitempty"`             // For file_exists validation
+	Pattern        string            `json:"pattern,omitempty"`          // For output_contains validation
+	Input          string            `json:"input,omitempty"`            // Input to check for pattern
+	Timeout        string            `json:"timeout,omitempty"`          // Timeout duration (e.g., "30s")
+	Retries        int               `json:"retries,omitempty"`          // Number of retries
+	Description    string            `json:"description,omitempty"`      // Human-readable description
+	Options        map[string]interface{} `json:"options,omitempty"`     // Additional options
+}
+
 // Plan represents the structure of a plan file
 type Plan struct {
-	ID             int      `json:"id"`
-	Category       string   `json:"category,omitempty"`
-	Command        string   `json:"command,omitempty"`
-	Description    string   `json:"description"`
-	Steps          []string `json:"steps,omitempty"`
-	ExpectedOutput string   `json:"expected_output,omitempty"`
-	Tested         bool     `json:"tested,omitempty"`
-	Milestone      string   `json:"milestone,omitempty"`       // Optional milestone this feature belongs to
-	MilestoneOrder int      `json:"milestone_order,omitempty"` // Order within the milestone (for prioritization)
-	Deferred       bool     `json:"deferred,omitempty"`        // Whether this feature has been deferred due to scope constraints
-	DeferReason    string   `json:"defer_reason,omitempty"`    // Reason for deferral (if deferred)
+	ID             int                    `json:"id"`
+	Category       string                 `json:"category,omitempty"`
+	Command        string                 `json:"command,omitempty"`
+	Description    string                 `json:"description"`
+	Steps          []string               `json:"steps,omitempty"`
+	ExpectedOutput string                 `json:"expected_output,omitempty"`
+	Tested         bool                   `json:"tested,omitempty"`
+	Milestone      string                 `json:"milestone,omitempty"`       // Optional milestone this feature belongs to
+	MilestoneOrder int                    `json:"milestone_order,omitempty"` // Order within the milestone (for prioritization)
+	Deferred       bool                   `json:"deferred,omitempty"`        // Whether this feature has been deferred due to scope constraints
+	DeferReason    string                 `json:"defer_reason,omitempty"`    // Reason for deferral (if deferred)
+	Validations    []ValidationDefinition `json:"validations,omitempty"`     // Outcome-focused validations for the feature
 }
 
 // ReadFile reads and parses a plan file

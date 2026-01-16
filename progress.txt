@@ -709,3 +709,95 @@ replan_threshold: 3            # Consecutive failures before replanning
 - Consider adding replan history tracking (not just versions, but trigger history)
 - The replan package follows the established package-per-concern pattern
 
+
+## 2026-01-16: Outcome-Focused Validation (Feature #11)
+
+### Completed
+- Created `internal/validation` package with comprehensive outcome validation:
+  - `validation.go` - Validator interface, all validator implementations, validation runner
+  - `validation_test.go` - 30+ tests covering all validator types and functionality
+- Implemented five validation types:
+  - `EndpointValidator` - HTTP GET/POST endpoint validation with status code and body pattern matching
+  - `CLIValidator` - CLI command execution with exit code and output pattern validation
+  - `FileExistsValidator` - File existence check with content pattern and size validation
+  - `OutputValidator` - Output pattern matching with inverse option
+  - `ValidationRunner` - Aggregates and runs multiple validators with results summary
+- Added validation support to Plan struct:
+  - New `ValidationDefinition` struct in `internal/plan/plan.go`
+  - New `Validations` array field in Plan struct
+- Added CLI flags:
+  - `-validate` - Run validations for all completed features
+  - `-validate-feature <id>` - Validate a specific feature by ID
+- Implemented validation features:
+  - Configurable timeout (default: 30s) and retries (default: 3)
+  - Exponential backoff on retries
+  - Pattern matching via Go regex
+  - HTTP headers and request body support
+  - Expected exit code configuration for CLI commands
+  - File size and content validation
+  - JSON output format for automation
+- Integrated with main ralph.go:
+  - Validation command handling in main()
+  - Results logged to progress.txt
+  - Error reporting and summary output
+- Updated README.md with comprehensive documentation:
+  - New "Outcome-Focused Validation" section
+  - Validation type reference table
+  - Detailed field documentation
+  - Example validations for various use cases
+  - Full-stack app validation example
+  - Added validation to features list
+  - Added CLI options documentation
+  - Added validations field to Plan Fields section
+- All 230+ tests passing (30+ validation tests + existing tests)
+
+### Package Structure
+```
+internal/validation/
+├── validation.go      # Validator interface, implementations, runner
+└── validation_test.go # 30+ tests for all validation types
+```
+
+### Validation Types
+| Type | Description |
+|------|-------------|
+| `http_get` | HTTP GET endpoint validation |
+| `http_post` | HTTP POST endpoint validation |
+| `cli_command` | CLI command execution validation |
+| `file_exists` | File existence and content validation |
+| `output_contains` | Output pattern matching |
+
+### Example Validation Definition
+```json
+{
+  "id": 1,
+  "description": "API health check",
+  "tested": true,
+  "validations": [
+    {
+      "type": "http_get",
+      "url": "http://localhost:8080/health",
+      "expected_status": 200,
+      "expected_body": "healthy",
+      "timeout": "10s",
+      "retries": 3,
+      "description": "Health endpoint returns healthy"
+    }
+  ]
+}
+```
+
+### Notes for Next Developer
+- Validations are defined per-feature in plan.json using the `validations` array
+- The `-validate` flag only runs on features with `tested: true`
+- Use `-validate-feature <id>` to validate a specific feature regardless of tested status
+- Regex patterns use Go's regexp syntax
+- HTTP validations support headers, body, and expected status/body patterns
+- CLI validations can check exit code and stdout patterns
+- File validations can verify existence, size, and content patterns
+- ValidationRunner aggregates results and provides summary output
+- Results are logged to progress.txt for tracking
+- Consider adding webhook notifications for validation failures in future
+- Consider adding validation scheduling (run on interval) for monitoring
+- The validation package is independent and follows established patterns
+

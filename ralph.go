@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/logimos/ralph/internal/replan"
 	"github.com/logimos/ralph/internal/scope"
 	"github.com/logimos/ralph/internal/ui"
+	"github.com/logimos/ralph/internal/validation"
 )
 
 var (
@@ -115,6 +117,19 @@ func main() {
 		return
 	}
 
+	// Handle validation commands
+	if cfg.Validate || cfg.ValidateFeature > 0 {
+		if err := validateConfig(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := handleValidationCommands(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -183,6 +198,9 @@ func parseFlags() *config.Config {
 	flag.IntVar(&cfg.ReplanThreshold, "replan-threshold", config.DefaultReplanThreshold, "Consecutive failures before replanning (default: 3)")
 	flag.BoolVar(&cfg.ListVersions, "list-versions", false, "List plan backup versions")
 	flag.IntVar(&cfg.RestoreVersion, "restore-version", 0, "Restore a specific plan version")
+	// Validation flags
+	flag.BoolVar(&cfg.Validate, "validate", false, "Run validations for all completed features")
+	flag.IntVar(&cfg.ValidateFeature, "validate-feature", 0, "Validate a specific feature by ID")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -305,6 +323,27 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    - blocked_feature:    Feature becomes blocked/deferred\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Plan versioning creates backups as plan.json.bak.N before changes.\n")
+		fmt.Fprintf(os.Stderr, "\nOutcome Validation:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph supports outcome-focused validation beyond tests and type checks.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Validation types:\n")
+		fmt.Fprintf(os.Stderr, "    http_get       - Verify HTTP GET endpoint returns expected response\n")
+		fmt.Fprintf(os.Stderr, "    http_post      - Verify HTTP POST endpoint works correctly\n")
+		fmt.Fprintf(os.Stderr, "    cli_command    - Verify CLI command executes successfully\n")
+		fmt.Fprintf(os.Stderr, "    file_exists    - Verify file exists with expected content\n")
+		fmt.Fprintf(os.Stderr, "    output_contains - Verify output contains expected pattern\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Add validations to plan.json features:\n")
+		fmt.Fprintf(os.Stderr, "    {\n")
+		fmt.Fprintf(os.Stderr, "      \"id\": 1, \"description\": \"API endpoint\",\n")
+		fmt.Fprintf(os.Stderr, "      \"validations\": [\n")
+		fmt.Fprintf(os.Stderr, "        {\"type\": \"http_get\", \"url\": \"http://localhost:8080/health\"}\n")
+		fmt.Fprintf(os.Stderr, "      ]\n")
+		fmt.Fprintf(os.Stderr, "    }\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -validate              Run validations for all completed features\n")
+		fmt.Fprintf(os.Stderr, "    -validate-feature <id> Validate a specific feature\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -330,6 +369,8 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -replan -replan-strategy agent   # Manually trigger agent-based replanning\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-versions                   # Show plan backup versions\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -restore-version 2               # Restore plan version 2\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -validate                        # Run validations for completed features\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -validate-feature 5              # Validate specific feature\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -1447,6 +1488,175 @@ func handleReplanCommands(cfg *config.Config) error {
 			fmt.Printf("Replanning completed: %s\n", result.Message)
 		}
 		return nil
+	}
+
+	return nil
+}
+
+// handleValidationCommands processes validation-related CLI commands
+func handleValidationCommands(cfg *config.Config) error {
+	// Create UI instance
+	uiCfg := ui.OutputConfig{
+		NoColor:    cfg.NoColor,
+		Quiet:      cfg.Quiet,
+		JSONOutput: cfg.JSONOutput,
+		LogLevel:   ui.ParseLogLevel(cfg.LogLevel),
+	}
+	output := ui.New(uiCfg)
+
+	// Load plans
+	plans, err := plan.ReadFile(cfg.PlanFile)
+	if err != nil {
+		return fmt.Errorf("failed to load plan file: %w", err)
+	}
+
+	// Filter plans to validate
+	var plansToValidate []plan.Plan
+	if cfg.ValidateFeature > 0 {
+		// Validate specific feature
+		p := plan.GetByID(plans, cfg.ValidateFeature)
+		if p == nil {
+			return fmt.Errorf("feature #%d not found", cfg.ValidateFeature)
+		}
+		plansToValidate = append(plansToValidate, *p)
+	} else {
+		// Validate all completed features that have validations
+		for _, p := range plans {
+			if p.Tested && len(p.Validations) > 0 {
+				plansToValidate = append(plansToValidate, p)
+			}
+		}
+	}
+
+	if len(plansToValidate) == 0 {
+		if cfg.ValidateFeature > 0 {
+			output.Info("Feature #%d has no validations defined", cfg.ValidateFeature)
+		} else {
+			output.Info("No completed features with validations found")
+		}
+		fmt.Println()
+		fmt.Println("To add validations, include a 'validations' array in your plan.json features:")
+		fmt.Println(`  {
+    "id": 1,
+    "description": "API endpoint",
+    "tested": true,
+    "validations": [
+      {"type": "http_get", "url": "http://localhost:8080/health", "expected_status": 200},
+      {"type": "cli_command", "command": "curl", "args": ["-s", "http://localhost:8080/version"]}
+    ]
+  }`)
+		return nil
+	}
+
+	output.Header("Running Validations")
+	output.Info("Features to validate: %d", len(plansToValidate))
+	output.Print("")
+
+	// Track overall results
+	totalValidations := 0
+	totalPassed := 0
+	totalFailed := 0
+	var allResults []validation.ValidationRunResult
+
+	ctx := context.Background()
+
+	for _, p := range plansToValidate {
+		if len(p.Validations) == 0 {
+			if cfg.ValidateFeature > 0 {
+				output.Warn("Feature #%d has no validations defined", p.ID)
+			}
+			continue
+		}
+
+		output.SubHeader("Feature #%d: %s", p.ID, p.Description)
+
+		// Create validation runner
+		runner := validation.NewValidationRunner()
+
+		// Convert plan.ValidationDefinition to validation.ValidationDefinition
+		for _, vdef := range p.Validations {
+			valDef := validation.ValidationDefinition{
+				Type:           validation.ValidationType(vdef.Type),
+				URL:            vdef.URL,
+				Method:         vdef.Method,
+				Body:           vdef.Body,
+				Headers:        vdef.Headers,
+				ExpectedStatus: vdef.ExpectedStatus,
+				ExpectedBody:   vdef.ExpectedBody,
+				Command:        vdef.Command,
+				Args:           vdef.Args,
+				Path:           vdef.Path,
+				Pattern:        vdef.Pattern,
+				Input:          vdef.Input,
+				Timeout:        vdef.Timeout,
+				Retries:        vdef.Retries,
+				Description:    vdef.Description,
+				Options:        vdef.Options,
+			}
+			if err := runner.AddFromDefinitions([]validation.ValidationDefinition{valDef}); err != nil {
+				output.Error("Invalid validation: %v", err)
+				continue
+			}
+		}
+
+		// Run validations
+		result := runner.Run(ctx)
+		result.FeatureID = p.ID
+		result.FeatureName = p.Description
+
+		allResults = append(allResults, result)
+		totalValidations += result.TotalCount
+		totalPassed += result.PassedCount
+		totalFailed += result.FailedCount
+
+		// Display results
+		for _, vr := range result.Results {
+			if vr.Success {
+				output.Success("  %s", vr.Message)
+			} else {
+				output.Error("  %s", vr.Message)
+				if vr.Error != "" && cfg.Verbose {
+					output.Debug("    Error: %s", vr.Error)
+				}
+			}
+		}
+
+		output.Print("")
+	}
+
+	// Print summary
+	output.Header("Validation Summary")
+	
+	status := "PASSED"
+	if totalFailed > 0 {
+		status = "FAILED"
+	}
+
+	output.Print("Overall: %s", status)
+	output.Print("  Total validations: %d", totalValidations)
+	output.Print("  Passed: %d", totalPassed)
+	output.Print("  Failed: %d", totalFailed)
+	output.Print("")
+
+	// Show failed features
+	if totalFailed > 0 {
+		output.Warn("Failed features:")
+		for _, r := range allResults {
+			if r.FailedCount > 0 {
+				output.Print("  - Feature #%d: %s (%d/%d failed)",
+					r.FeatureID, r.FeatureName, r.FailedCount, r.TotalCount)
+			}
+		}
+	}
+
+	// Log validation results to progress file
+	summaryMsg := fmt.Sprintf("VALIDATION: %s - %d/%d passed across %d features",
+		status, totalPassed, totalValidations, len(plansToValidate))
+	appendProgress(cfg.ProgressFile, summaryMsg)
+
+	// Return error if any validations failed
+	if totalFailed > 0 {
+		return fmt.Errorf("%d validation(s) failed", totalFailed)
 	}
 
 	return nil

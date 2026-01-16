@@ -10,6 +10,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Progress Tracking**: Automatically updates plan files and progress logs
 - **Milestone Tracking**: Organize features into milestones with progress visualization
 - **Validation**: Integrates with type checking and testing commands
+- **Outcome Validation**: Validate HTTP endpoints, CLI commands, and file existence beyond unit tests
 - **Git Integration**: Creates commits for completed features
 - **Completion Detection**: Automatically detects when all work is complete
 - **Failure Recovery**: Automatically handles failures with configurable recovery strategies
@@ -227,6 +228,12 @@ Replanning Options:
         List plan backup versions
   -restore-version int
         Restore a specific plan version
+
+Validation Options:
+  -validate
+        Run validations for all completed features
+  -validate-feature int
+        Validate a specific feature by ID
 ```
 
 ### Output Options
@@ -1430,6 +1437,221 @@ During `ralph -iterations`, milestone progress is:
    ralph -milestone MVP
    ```
 
+## Outcome-Focused Validation
+
+Ralph supports outcome-focused validation that goes beyond tests and type checks. You can define validations to verify that API endpoints respond correctly, CLI commands work end-to-end, files exist with expected content, and outputs match expected patterns.
+
+### Validation Types
+
+| Type | Description | Example Use Case |
+|------|-------------|------------------|
+| `http_get` | Verify HTTP GET endpoint | Health checks, API responses |
+| `http_post` | Verify HTTP POST endpoint | Form submissions, API writes |
+| `cli_command` | Verify CLI command execution | Tool integration, scripts |
+| `file_exists` | Verify file exists with content | Config files, generated outputs |
+| `output_contains` | Verify output matches pattern | Log validation, response checking |
+
+### Defining Validations
+
+Add validations to features in your plan.json:
+
+```json
+[
+  {
+    "id": 1,
+    "description": "Health check endpoint",
+    "category": "infra",
+    "tested": true,
+    "validations": [
+      {
+        "type": "http_get",
+        "url": "http://localhost:8080/health",
+        "expected_status": 200,
+        "expected_body": "\"status\":\\s*\"healthy\"",
+        "description": "Health endpoint returns healthy"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "description": "User API endpoint",
+    "tested": true,
+    "validations": [
+      {
+        "type": "http_post",
+        "url": "http://localhost:8080/api/users",
+        "body": "{\"name\": \"test\"}",
+        "headers": {"Content-Type": "application/json"},
+        "expected_status": 201,
+        "description": "Create user returns 201"
+      },
+      {
+        "type": "http_get",
+        "url": "http://localhost:8080/api/users/1",
+        "expected_status": 200,
+        "description": "Get user returns 200"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "description": "CLI tool works",
+    "tested": true,
+    "validations": [
+      {
+        "type": "cli_command",
+        "command": "./mytool",
+        "args": ["--version"],
+        "expected_body": "v\\d+\\.\\d+\\.\\d+",
+        "description": "Tool version command works"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "description": "Config file generation",
+    "tested": true,
+    "validations": [
+      {
+        "type": "file_exists",
+        "path": "config/settings.yaml",
+        "pattern": "database:",
+        "description": "Config file contains database settings"
+      }
+    ]
+  }
+]
+```
+
+### Validation Definition Fields
+
+**Common Fields:**
+| Field | Description |
+|-------|-------------|
+| `type` | Validation type (required): `http_get`, `http_post`, `cli_command`, `file_exists`, `output_contains` |
+| `description` | Human-readable description of what's being validated |
+| `timeout` | Timeout duration (e.g., "30s", "1m") |
+| `retries` | Number of retries on failure (default: 3) |
+
+**HTTP Validation Fields:**
+| Field | Description |
+|-------|-------------|
+| `url` | The URL to request (required for HTTP validations) |
+| `method` | HTTP method (defaults based on type: GET or POST) |
+| `body` | Request body for POST requests |
+| `headers` | Map of HTTP headers to send |
+| `expected_status` | Expected HTTP status code (default: 200) |
+| `expected_body` | Regex pattern to match in response body |
+
+**CLI Validation Fields:**
+| Field | Description |
+|-------|-------------|
+| `command` | Command to execute (required for CLI validation) |
+| `args` | Array of command arguments |
+| `expected_body` | Regex pattern to match in stdout |
+| `options.expected_exit_code` | Expected exit code (default: 0) |
+
+**File Validation Fields:**
+| Field | Description |
+|-------|-------------|
+| `path` | File path to check (required for file_exists) |
+| `pattern` | Regex pattern to match in file content |
+| `options.should_exist` | Whether file should exist (default: true) |
+| `options.min_size` | Minimum file size in bytes |
+
+**Output Validation Fields:**
+| Field | Description |
+|-------|-------------|
+| `input` | The text to check against |
+| `pattern` | Regex pattern to match (required for output_contains) |
+| `options.inverse` | If true, pattern should NOT match |
+
+### Running Validations
+
+```bash
+# Run validations for all completed features
+ralph -validate
+
+# Validate a specific feature by ID
+ralph -validate-feature 5
+
+# With verbose output
+ralph -validate -verbose
+
+# Output example:
+# === Running Validations ===
+# Features to validate: 3
+#
+# === Feature #1: Health check endpoint ===
+# ✓ GET http://localhost:8080/health returned 200
+#
+# === Feature #2: User API endpoint ===
+# ✓ POST http://localhost:8080/api/users returned 201
+# ✓ GET http://localhost:8080/api/users/1 returned 200
+#
+# === Validation Summary ===
+# Overall: PASSED
+#   Total validations: 3
+#   Passed: 3
+#   Failed: 0
+```
+
+### Validation Behavior
+
+1. **Retries**: Validations automatically retry on failure (default: 3 retries with exponential backoff)
+2. **Timeout**: Each validation has a timeout (default: 30 seconds)
+3. **Pattern Matching**: Uses Go's regular expressions for body/output matching
+4. **Progress Tracking**: Validation results are logged to progress.txt
+
+### Best Practices
+
+1. **Start simple**: Begin with health checks and basic endpoint validation
+2. **Use descriptive descriptions**: Makes output easier to understand
+3. **Set appropriate timeouts**: Increase for slow endpoints or commands
+4. **Test patterns**: Verify regex patterns work before adding to validations
+5. **Validate completed features**: Validations run only on features with `tested: true`
+
+### Example: Full-Stack App Validation
+
+```json
+{
+  "id": 1,
+  "description": "Full-stack app deployment",
+  "tested": true,
+  "validations": [
+    {
+      "type": "cli_command",
+      "command": "docker",
+      "args": ["compose", "ps"],
+      "expected_body": "Up",
+      "description": "Docker containers are running"
+    },
+    {
+      "type": "http_get",
+      "url": "http://localhost:3000",
+      "expected_status": 200,
+      "description": "Frontend is accessible"
+    },
+    {
+      "type": "http_get",
+      "url": "http://localhost:8080/api/health",
+      "expected_status": 200,
+      "expected_body": "healthy",
+      "description": "Backend API is healthy"
+    },
+    {
+      "type": "http_post",
+      "url": "http://localhost:8080/api/login",
+      "body": "{\"email\":\"test@example.com\",\"password\":\"test\"}",
+      "headers": {"Content-Type": "application/json"},
+      "expected_status": 200,
+      "expected_body": "token",
+      "description": "Authentication works"
+    }
+  ]
+}
+```
+
 ## Plan File Format
 
 Plans are JSON files containing an array of feature objects:
@@ -1463,6 +1685,7 @@ Plans are JSON files containing an array of feature objects:
 - `milestone_order` (number): Optional order within the milestone for prioritization
 - `deferred` (boolean): Whether the feature has been deferred due to scope constraints
 - `defer_reason` (string): Reason for deferral (e.g., "iteration_limit", "deadline")
+- `validations` (array): Optional outcome-focused validations (see Outcome-Focused Validation section)
 
 ## Workflow
 

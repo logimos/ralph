@@ -81,6 +81,9 @@ type Config struct {
 	ReplanThreshold  int    // Number of consecutive failures before replanning
 	ListVersions     bool   // List plan versions
 	RestoreVersion   int    // Restore a specific plan version
+	// Validation configuration
+	Validate        bool // Run validations for all completed features
+	ValidateFeature int  // Validate a specific feature by ID
 }
 
 // New creates a new Config with default values

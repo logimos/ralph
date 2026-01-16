@@ -225,7 +225,7 @@
             "Document validation system in README"
         ],
         "expected_output": "Ralph can validate higher-level outcomes like 'API responds correctly' or 'CLI works end-to-end' beyond just tests and type checks",
-        "tested": false
+        "tested": true
     },
     {
         "id": 12,
