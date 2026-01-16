@@ -11,6 +11,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Validation**: Integrates with type checking and testing commands
 - **Git Integration**: Creates commits for completed features
 - **Completion Detection**: Automatically detects when all work is complete
+- **Failure Recovery**: Automatically handles failures with configurable recovery strategies
 
 ## Installation
 
@@ -138,6 +139,8 @@ Options:
         List only tested features
   -list-untested
         List only untested features
+  -max-retries int
+        Maximum retries per feature before escalation (default: 3)
   -notes string
         Path to notes file (required with -generate-plan)
   -output string
@@ -146,6 +149,8 @@ Options:
         Path to the plan file (e.g., plan.json) (default "plan.json")
   -progress string
         Path to the progress file (e.g., progress.txt) (default "progress.txt")
+  -recovery-strategy string
+        Recovery strategy: retry, skip, rollback (default: retry)
   -status
         List plan status (tested and untested features)
   -test string
@@ -284,6 +289,15 @@ progress: tasks/progress.txt
 verbose: true
 ```
 
+**Configuration with recovery settings:**
+```yaml
+# .ralph.yaml
+build_system: go
+iterations: 10
+max_retries: 5
+recovery_strategy: retry
+```
+
 **Using a custom config file:**
 ```bash
 # Use a specific config file
@@ -292,6 +306,97 @@ ralph -config production.yaml -iterations 10
 # Override config file settings
 ralph -iterations 1 -verbose  # Uses config file but overrides these values
 ```
+
+## Failure Recovery
+
+Ralph includes an intelligent failure recovery system that automatically detects and handles failures during iterative development. This helps prevent the workflow from getting stuck when issues occur.
+
+### Failure Types
+
+Ralph detects four types of failures:
+
+- **Test Failures** (`test_failure`): Test assertions fail, test suites don't pass
+- **Type Check Failures** (`typecheck_failure`): Compilation errors, type mismatches, syntax errors
+- **Timeout** (`timeout`): Operations exceed time limits
+- **Agent Errors** (`agent_error`): General agent execution failures
+
+### Recovery Strategies
+
+Three recovery strategies are available:
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `retry` (default) | Retry with enhanced prompt guidance | Transient failures, test issues |
+| `skip` | Skip the feature, move to next | Blocking issues, complex problems |
+| `rollback` | Revert changes via git, then retry | Corrupted state, bad code changes |
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# Set maximum retries before escalation (default: 3)
+ralph -iterations 10 -max-retries 5
+
+# Set recovery strategy (default: retry)
+ralph -iterations 10 -recovery-strategy skip
+
+# Combine options
+ralph -iterations 10 -max-retries 2 -recovery-strategy rollback
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+max_retries: 5
+recovery_strategy: retry
+```
+
+### How It Works
+
+1. **Failure Detection**: After each agent execution, Ralph analyzes the output and exit code to detect failures
+2. **Recording**: Failures are tracked per feature with retry counts
+3. **Strategy Application**: The configured strategy is applied to recover
+4. **Escalation**: If max retries are exceeded, Ralph automatically escalates to skip the feature
+5. **Summary**: At the end, a failure summary shows what happened
+
+### Example Output
+
+```
+=== Iteration 3/10 ===
+Executing agent command...
+
+⚠ Failure detected: [test_failure] --- FAIL: TestSomething (feature #5, iteration 3, retries: 1)
+→ Recovery: Retrying feature #5 (attempt 2/3)
+
+=== Iteration 4/10 ===
+...
+
+=== Recovery Summary ===
+Failure Summary:
+  Feature #5: 2 failure(s)
+    - test_failure: 2
+Total failures: 2
+```
+
+### Retry Strategy Details
+
+When using the `retry` strategy, Ralph generates enhanced prompts based on the failure type:
+
+- **Test failures**: Emphasizes fixing tests first, ensuring assertions pass
+- **Type check failures**: Focuses on compilation issues, imports, and type errors
+- **Timeouts**: Suggests simplification and breaking down into smaller steps
+- **Agent errors**: Provides general guidance to review and address the root cause
+
+### Rollback Strategy Details
+
+The `rollback` strategy uses git to revert changes:
+
+1. Checks if in a git repository
+2. Verifies uncommitted changes exist
+3. Runs `git reset HEAD --` and `git checkout -- .`
+4. Returns to a clean state for retry
+
+**Note**: Rollback only reverts tracked file changes. Untracked files are preserved for safety.
 
 ## Plan File Format
 

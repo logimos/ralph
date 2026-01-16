@@ -40,6 +40,10 @@ type FileConfig struct {
 	// Execution settings
 	Iterations int  `json:"iterations,omitempty" yaml:"iterations,omitempty"`
 	Verbose    bool `json:"verbose,omitempty" yaml:"verbose,omitempty"`
+
+	// Recovery settings
+	MaxRetries       int    `json:"max_retries,omitempty" yaml:"max_retries,omitempty"`
+	RecoveryStrategy string `json:"recovery_strategy,omitempty" yaml:"recovery_strategy,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -138,6 +142,23 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return fmt.Errorf("iterations cannot be negative")
 	}
 
+	// Validate max retries if specified
+	if cfg.MaxRetries < 0 {
+		return fmt.Errorf("max_retries cannot be negative")
+	}
+
+	// Validate recovery strategy if specified
+	validStrategies := map[string]bool{
+		"":         true, // empty is valid (use default)
+		"retry":    true,
+		"skip":     true,
+		"rollback": true,
+	}
+
+	if !validStrategies[cfg.RecoveryStrategy] {
+		return fmt.Errorf("invalid recovery_strategy %q: must be one of retry, skip, or rollback", cfg.RecoveryStrategy)
+	}
+
 	return nil
 }
 
@@ -178,5 +199,13 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.Verbose && !cfg.Verbose {
 		cfg.Verbose = fileCfg.Verbose
+	}
+
+	// Apply recovery settings
+	if fileCfg.MaxRetries > 0 && cfg.MaxRetries == DefaultMaxRetries {
+		cfg.MaxRetries = fileCfg.MaxRetries
+	}
+	if fileCfg.RecoveryStrategy != "" && cfg.RecoveryStrategy == DefaultRecoveryStrategy {
+		cfg.RecoveryStrategy = fileCfg.RecoveryStrategy
 	}
 }

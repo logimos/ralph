@@ -134,7 +134,7 @@
             "Log recovery actions for debugging"
         ],
         "expected_output": "Ralph automatically handles failures by retrying, simplifying tasks, rolling back, or skipping, reducing iteration failures and stuck states",
-        "tested": false
+        "tested": true
     },
     {
         "id": 8,

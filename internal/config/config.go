@@ -8,34 +8,42 @@ const (
 	DefaultProgressFile = "progress.txt"
 	// DefaultAgentCmd is the default AI agent command
 	DefaultAgentCmd = "cursor-agent"
+	// DefaultMaxRetries is the default maximum retries per feature before escalation
+	DefaultMaxRetries = 3
+	// DefaultRecoveryStrategy is the default recovery strategy
+	DefaultRecoveryStrategy = "retry"
 )
 
 // Config holds the application configuration
 type Config struct {
-	PlanFile       string
-	ProgressFile   string
-	Iterations     int
-	AgentCmd       string
-	TypeCheckCmd   string
-	TestCmd        string
-	BuildSystem    string
-	Verbose        bool
-	ShowVersion    bool
-	ListStatus     bool
-	ListTested     bool
-	ListUntested   bool
-	GeneratePlan   bool
-	NotesFile      string
-	OutputPlanFile string
-	ConfigFile     string // Path to config file (if specified via -config flag)
+	PlanFile         string
+	ProgressFile     string
+	Iterations       int
+	AgentCmd         string
+	TypeCheckCmd     string
+	TestCmd          string
+	BuildSystem      string
+	Verbose          bool
+	ShowVersion      bool
+	ListStatus       bool
+	ListTested       bool
+	ListUntested     bool
+	GeneratePlan     bool
+	NotesFile        string
+	OutputPlanFile   string
+	ConfigFile       string // Path to config file (if specified via -config flag)
+	MaxRetries       int    // Maximum retries per feature before recovery escalation
+	RecoveryStrategy string // Recovery strategy: retry, skip, rollback
 }
 
 // New creates a new Config with default values
 func New() *Config {
 	return &Config{
-		PlanFile:       DefaultPlanFile,
-		ProgressFile:   DefaultProgressFile,
-		AgentCmd:       DefaultAgentCmd,
-		OutputPlanFile: DefaultPlanFile,
+		PlanFile:         DefaultPlanFile,
+		ProgressFile:     DefaultProgressFile,
+		AgentCmd:         DefaultAgentCmd,
+		OutputPlanFile:   DefaultPlanFile,
+		MaxRetries:       DefaultMaxRetries,
+		RecoveryStrategy: DefaultRecoveryStrategy,
 	}
 }

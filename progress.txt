@@ -115,3 +115,61 @@ verbose: true              # Verbose output
 - The FileConfig struct uses omitempty tags for clean serialization
 - Consider adding environment variable support in a future iteration
 - The config package is now a good foundation for future features like #4 (Environment-Aware Execution)
+
+## 2026-01-16: Failure Recovery Strategies (Feature #7)
+
+### Completed
+- Created `internal/recovery` package with comprehensive failure handling:
+  - `recovery.go` - Failure types, detection, and tracking
+  - `strategy.go` - Recovery strategy implementations
+  - `recovery_test.go` - 17 tests for failure detection and tracking
+  - `strategy_test.go` - 22 tests for strategy implementations
+- Implemented failure detection from agent output and exit codes:
+  - `FailureTypeTest` - Test failures (FAIL patterns, assertion errors)
+  - `FailureTypeTypeCheck` - Compilation/type errors (syntax, undefined, etc.)
+  - `FailureTypeTimeout` - Operation timeouts
+  - `FailureTypeAgentError` - General agent execution errors
+- Implemented three recovery strategies:
+  - `RetryStrategy` - Retry with enhanced prompt guidance based on failure type
+  - `SkipStrategy` - Mark feature as blocked and move to next
+  - `RollbackStrategy` - Revert changes via git and retry fresh
+- Added failure tracking per feature with retry counts and summaries
+- Added CLI flags: `-max-retries` (default: 3) and `-recovery-strategy` (default: retry)
+- Added config file support: `max_retries` and `recovery_strategy` fields
+- Integrated recovery into `runIterations()` with:
+  - Real-time failure detection after agent execution
+  - Strategy application with prompt modification for retries
+  - Automatic escalation to skip when max retries exceeded
+  - Failure logging to progress.txt
+  - Summary output at end of execution
+- Updated README.md with comprehensive recovery documentation
+- All 70+ tests passing (39 recovery tests + 31 existing tests)
+
+### Package Structure
+```
+internal/recovery/
+├── recovery.go      # FailureType, Failure, FailureTracker, DetectFailure()
+├── recovery_test.go # Tests for detection and tracking
+├── strategy.go      # RecoveryStrategy interface, Retry/Skip/Rollback implementations
+└── strategy_test.go # Tests for strategies
+```
+
+### Recovery Flow
+1. Agent executes iteration
+2. Output and exit code analyzed by DetectFailure()
+3. If failure detected, RecoveryManager.HandleFailure() is called
+4. Failure is recorded in FailureTracker
+5. Appropriate strategy is selected (based on config and retry count)
+6. Strategy.Apply() returns RecoveryResult with instructions
+7. If ShouldRetry: modified prompt is injected into next iteration
+8. If ShouldSkip: feature is skipped, next feature processed
+9. Summary printed at end showing all failures and recovery actions
+
+### Notes for Next Developer
+- Failure detection uses pattern matching on output - may need tuning for specific tools
+- Timeout detection is smart about test context (won't flag "test timed out" as timeout error)
+- RollbackStrategy requires git repo and uncommitted changes to work
+- Recovery manager tracks failures per featureID (currently always 0 - could be enhanced)
+- Consider adding SimplifyStrategy in future (break feature into sub-tasks)
+- The recovery package is independent and could be used by other features
+- Verbose output shows full recovery details, non-verbose shows summary only

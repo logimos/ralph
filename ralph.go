@@ -14,6 +14,7 @@ import (
 	"github.com/logimos/ralph/internal/detection"
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
+	"github.com/logimos/ralph/internal/recovery"
 )
 
 var (
@@ -90,6 +91,8 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.GeneratePlan, "generate-plan", false, "Generate plan.json from notes file")
 	flag.StringVar(&cfg.NotesFile, "notes", "", "Path to notes file (required with -generate-plan)")
 	flag.StringVar(&cfg.OutputPlanFile, "output", config.DefaultPlanFile, "Output plan file path (default: plan.json)")
+	flag.IntVar(&cfg.MaxRetries, "max-retries", config.DefaultMaxRetries, "Maximum retries per feature before escalation (default: 3)")
+	flag.StringVar(&cfg.RecoveryStrategy, "recovery-strategy", config.DefaultRecoveryStrategy, "Recovery strategy: retry, skip, rollback (default: retry)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -128,6 +131,10 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    verbose: true\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Priority: CLI flags > config file > defaults\n")
+		fmt.Fprintf(os.Stderr, "\nRecovery Strategies:\n")
+		fmt.Fprintf(os.Stderr, "  retry    - Retry the feature with enhanced guidance (default)\n")
+		fmt.Fprintf(os.Stderr, "  skip     - Skip the feature and move to the next one\n")
+		fmt.Fprintf(os.Stderr, "  rollback - Revert changes via git and retry fresh\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -225,6 +232,12 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.Verbose && !explicitFlags["verbose"] && !explicitFlags["v"] {
 		cfg.Verbose = fileCfg.Verbose
 	}
+	if fileCfg.MaxRetries > 0 && !explicitFlags["max-retries"] {
+		cfg.MaxRetries = fileCfg.MaxRetries
+	}
+	if fileCfg.RecoveryStrategy != "" && !explicitFlags["recovery-strategy"] {
+		cfg.RecoveryStrategy = fileCfg.RecoveryStrategy
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -268,6 +281,16 @@ func validateConfig(cfg *config.Config) error {
 		return fmt.Errorf("agent command not found in PATH: %s", cfg.AgentCmd)
 	}
 
+	// Validate recovery strategy
+	if _, err := recovery.ParseStrategyType(cfg.RecoveryStrategy); err != nil {
+		return err
+	}
+
+	// Validate max retries
+	if cfg.MaxRetries < 0 {
+		return fmt.Errorf("max-retries cannot be negative")
+	}
+
 	return nil
 }
 
@@ -277,11 +300,20 @@ func runIterations(cfg *config.Config) error {
 	fmt.Printf("Progress file: %s\n", cfg.ProgressFile)
 	fmt.Printf("Iterations: %d\n", cfg.Iterations)
 	fmt.Printf("Agent command: %s\n", cfg.AgentCmd)
+	fmt.Printf("Recovery strategy: %s (max %d retries)\n", cfg.RecoveryStrategy, cfg.MaxRetries)
 	if cfg.Verbose {
 		fmt.Printf("Type check command: %s\n", cfg.TypeCheckCmd)
 		fmt.Printf("Test command: %s\n", cfg.TestCmd)
 	}
 	fmt.Println()
+
+	// Initialize recovery manager
+	strategyType, _ := recovery.ParseStrategyType(cfg.RecoveryStrategy)
+	recoveryMgr := recovery.NewRecoveryManager(cfg.MaxRetries, strategyType)
+
+	// Track the current feature being worked on (extracted from output if possible)
+	currentFeatureID := 0
+	var additionalPromptGuidance string
 
 	for i := 1; i <= cfg.Iterations; i++ {
 		fmt.Printf("=== Iteration %d/%d ===\n", i, cfg.Iterations)
@@ -290,8 +322,12 @@ func runIterations(cfg *config.Config) error {
 			fmt.Printf("Executing agent command...\n")
 		}
 
-		// Build the prompt for the AI agent
+		// Build the prompt for the AI agent, including any recovery guidance
 		iterPrompt := prompt.BuildIterationPrompt(cfg)
+		if additionalPromptGuidance != "" {
+			iterPrompt = additionalPromptGuidance + "\n\n" + iterPrompt
+			additionalPromptGuidance = "" // Clear after use
+		}
 
 		if cfg.Verbose {
 			fmt.Printf("Prompt: %s\n", iterPrompt)
@@ -299,24 +335,110 @@ func runIterations(cfg *config.Config) error {
 
 		// Execute the AI agent CLI tool
 		result, err := agent.Execute(cfg, iterPrompt)
+		
+		// Determine exit code for failure detection
+		exitCode := 0
 		if err != nil {
-			return fmt.Errorf("iteration %d failed: %w", i, err)
+			exitCode = 1
+			// Don't return immediately - handle with recovery
 		}
 
 		// Print the agent output
-		fmt.Println(result)
+		if result != "" {
+			fmt.Println(result)
+		}
 
-		// Check for completion signal
+		// Check for completion signal (even if there was an error, the output might contain it)
 		if strings.Contains(result, prompt.CompleteSignal) {
 			fmt.Printf("\n✓ Plan complete! Detected completion signal after %d iteration(s).\n", i)
+			printRecoverySummary(recoveryMgr, cfg.Verbose)
 			return nil
+		}
+
+		// Handle failure detection and recovery
+		if err != nil || containsFailureIndicators(result) {
+			if exitCode == 0 && containsFailureIndicators(result) {
+				exitCode = 1 // Treat as failure even if command succeeded
+			}
+
+			failure, recoveryResult := recoveryMgr.HandleFailure(result, exitCode, currentFeatureID, i)
+			
+			if failure != nil {
+				fmt.Printf("\n⚠ Failure detected: %s\n", failure)
+				
+				// Log failure to progress file
+				logFailureToProgress(cfg.ProgressFile, failure)
+
+				if recoveryResult.ShouldSkip {
+					fmt.Printf("→ Recovery: %s\n", recoveryResult.Message)
+					// Continue to next iteration (which will work on next feature)
+				} else if recoveryResult.ShouldRetry {
+					fmt.Printf("→ Recovery: %s\n", recoveryResult.Message)
+					// Set additional guidance for the retry
+					if recoveryResult.ModifiedPrompt != "" {
+						additionalPromptGuidance = recoveryResult.ModifiedPrompt
+					}
+				}
+
+				if !recoveryResult.Success {
+					fmt.Printf("→ Recovery action failed: %s\n", recoveryResult.Message)
+				}
+			} else if err != nil {
+				// Agent execution error but no specific failure detected
+				fmt.Printf("\n⚠ Agent execution error: %v\n", err)
+			}
 		}
 
 		fmt.Println() // Empty line between iterations
 	}
 
 	fmt.Printf("Completed %d iteration(s) without completion signal.\n", cfg.Iterations)
+	printRecoverySummary(recoveryMgr, cfg.Verbose)
 	return nil
+}
+
+// containsFailureIndicators checks if the output contains signs of failure
+func containsFailureIndicators(output string) bool {
+	outputLower := strings.ToLower(output)
+	indicators := []string{
+		"fail",
+		"error:",
+		"panic:",
+		"cannot compile",
+		"build failed",
+		"test failed",
+		"assertion failed",
+	}
+	
+	for _, indicator := range indicators {
+		if strings.Contains(outputLower, indicator) {
+			return true
+		}
+	}
+	return false
+}
+
+// logFailureToProgress appends failure information to the progress file
+func logFailureToProgress(progressFile string, failure *recovery.Failure) {
+	message := fmt.Sprintf("FAILURE [%s]: %s (feature #%d, retry %d)",
+		failure.Type, failure.Message, failure.FeatureID, failure.RetryCount)
+	
+	if err := appendProgress(progressFile, message); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to log failure to progress file: %v\n", err)
+	}
+}
+
+// printRecoverySummary prints a summary of failures and recovery actions
+func printRecoverySummary(rm *recovery.RecoveryManager, verbose bool) {
+	summary := rm.GetFailureSummary()
+	if summary != "No failures recorded" {
+		fmt.Println()
+		fmt.Printf("=== Recovery Summary ===\n")
+		fmt.Println(summary)
+	} else if verbose {
+		fmt.Println()
+		fmt.Println("No failures encountered during execution.")
+	}
 }
 
 // listPlanStatus displays plan status (tested/untested features)
