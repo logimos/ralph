@@ -34,6 +34,8 @@ pnpm-debug.log*
 
 # Coverage
 coverage/
+coverage.out
+coverage.html
 .nyc_output/
 
 # Testing

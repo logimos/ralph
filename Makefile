@@ -69,6 +69,22 @@ test:
 	@echo "Running tests..."
 	$(GO_TEST) -v ./...
 
+## test-coverage: Run tests with coverage report
+test-coverage:
+	@echo "Running tests with coverage..."
+	$(GO_TEST) -v -coverprofile=coverage.out ./...
+	@echo ""
+	@echo "=== Coverage Summary ==="
+	$(GO_CMD) tool cover -func=coverage.out
+	@echo ""
+	@echo "Coverage report saved to coverage.out"
+
+## test-coverage-html: Generate HTML coverage report
+test-coverage-html: test-coverage
+	@echo "Generating HTML coverage report..."
+	$(GO_CMD) tool cover -html=coverage.out -o coverage.html
+	@echo "HTML coverage report saved to coverage.html"
+
 ## fmt: Format Go code
 fmt:
 	@echo "Formatting code..."
@@ -89,6 +105,8 @@ clean:
 	rm -f $(BINARY_NAME).exe
 	rm -rf $(RELEASE_DIR)
 	rm -f .version
+	rm -f coverage.out
+	rm -f coverage.html
 	@echo "Clean complete"
 
 ## tidy: Tidy go.mod

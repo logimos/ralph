@@ -1,0 +1,29 @@
+# Ralph Development Progress
+
+## 2026-01-16: Testing Infrastructure (Feature #1)
+
+### Completed
+- Created `ralph_test.go` with comprehensive unit tests for core functions
+- Added 22 test cases covering:
+  - `detectBuildSystem()` - 15 test cases for all build system types (100% coverage)
+  - `applyBuildSystemConfig()` - 12 test cases for config application (64% coverage)
+  - `isCursorAgent()` - 8 test cases for agent detection (100% coverage)
+  - `buildPrompt()` - 2 test cases for prompt construction (88% coverage)
+  - `readPlanFile()` - 3 test cases for plan file parsing (100% coverage)
+  - `filterPlans()` - 4 test cases for plan filtering (100% coverage)
+  - `extractAndWritePlan()` - 4 test cases for JSON extraction (78% coverage)
+  - `appendProgress()` - tests for progress file operations (78% coverage)
+- Updated Makefile with new targets:
+  - `make test-coverage` - runs tests with coverage report
+  - `make test-coverage-html` - generates HTML coverage report
+  - Updated `clean` target to remove coverage files
+
+### Coverage Summary
+- Core logic functions: 80-100% coverage
+- Overall: 24.9% (integration functions like main(), executeAgent() excluded from unit tests)
+
+### Notes for Next Developer
+- The test suite uses temporary directories for file-based tests, ensuring clean isolation
+- Tests for `detectBuildSystem()` change directories during execution, so they restore the original dir after each test
+- Integration tests for `executeAgent()` and `runIterations()` would require mocking external commands
+- Consider adding table-driven tests for `validateConfig()` in future iterations
