@@ -15,6 +15,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Failure Recovery**: Automatically handles failures with configurable recovery strategies
 - **Environment Detection**: Automatically adapts to CI and local environments
 - **Long-Running Memory**: Remembers architectural decisions and conventions across sessions
+- **Nudge System**: Lightweight mid-run guidance without stopping execution
 
 ## Installation
 
@@ -192,6 +193,16 @@ Milestone Options:
         List all milestones with progress
   -milestone string
         Show features for a specific milestone
+
+Nudge Options:
+  -nudge string
+        Add one-time nudge (format: type:content)
+  -show-nudges
+        Display current nudges
+  -clear-nudges
+        Clear all nudges
+  -nudge-file string
+        Path to nudge file (default "nudges.json")
 ```
 
 ### Output Options
@@ -728,6 +739,150 @@ Memories older than the retention period (default: 90 days) are automatically pr
    ```
 
 3. **Result**: Agent maintains consistency without needing repeated instructions
+
+## User Nudge Hooks
+
+Ralph includes a nudge system for lightweight mid-run guidance. Nudges allow you to steer the AI agent during execution without stopping the workflow. You can create or edit nudges.json during a run, and Ralph will incorporate the nudges into subsequent iterations.
+
+### Nudge Types
+
+| Type | Description | Examples |
+|------|-------------|----------|
+| `focus` | Prioritize a specific feature or approach | "Work on feature 5 first", "Focus on error handling" |
+| `skip` | Defer a feature or skip certain work | "Skip feature 3 for now", "Don't implement caching yet" |
+| `constraint` | Add a requirement or limitation | "Don't use external libraries", "Must be backward compatible" |
+| `style` | Specify coding style preferences | "Use functional style", "Prefer composition over inheritance" |
+
+### Nudge File
+
+Nudges are stored in `nudges.json` (configurable with `-nudge-file`). The file is automatically created when nudges are first added.
+
+**Example nudges.json:**
+```json
+{
+  "nudges": [
+    {
+      "id": "nudge_1705420800123456789",
+      "type": "focus",
+      "content": "Prioritize feature 5 - it's blocking other work",
+      "priority": 10,
+      "created_at": "2026-01-16T12:00:00Z",
+      "acknowledged": false
+    },
+    {
+      "id": "nudge_1705420800123456790",
+      "type": "constraint",
+      "content": "Don't add external dependencies without approval",
+      "priority": 5,
+      "created_at": "2026-01-16T12:00:00Z",
+      "acknowledged": false
+    }
+  ],
+  "last_updated": "2026-01-16T12:00:00Z"
+}
+```
+
+### Nudge Priority
+
+Nudges can have a priority (higher = more important). Nudges are sorted by priority when injected into the agent prompt. Default priority is 0.
+
+### Nudge Commands
+
+```bash
+# Add a one-time nudge
+ralph -nudge "focus:Work on feature 5 first"
+ralph -nudge "skip:Skip feature 3 for now"
+ralph -nudge "constraint:Don't use external libraries"
+ralph -nudge "style:Use functional programming style"
+
+# Display all nudges
+ralph -show-nudges
+
+# Clear all nudges
+ralph -clear-nudges
+
+# Use a custom nudge file
+ralph -iterations 5 -nudge-file project-nudges.json
+```
+
+### Nudge Injection
+
+During iterations, Ralph injects active nudges into the agent prompt as context:
+
+```
+[USER GUIDANCE - Please follow these instructions carefully:]
+- [FOCUS (priority: 10)] Prioritize feature 5 - it's blocking other work
+- [CONSTRAINT (priority: 5)] Don't add external dependencies without approval
+- [STYLE] Use functional programming style
+[END USER GUIDANCE]
+```
+
+### Nudge Acknowledgment
+
+After a nudge is injected into an iteration, it is automatically marked as acknowledged. This prevents the same nudge from being repeated in subsequent iterations. Nudge acknowledgments are also logged to progress.txt for tracking.
+
+### Mid-Run Guidance
+
+The key feature of nudges is mid-run guidance. You can:
+
+1. **Start an iteration run:**
+   ```bash
+   ralph -iterations 10 -verbose
+   ```
+
+2. **While running**, create/edit `nudges.json` to add guidance:
+   ```bash
+   # In another terminal
+   ralph -nudge "focus:Stop working on feature 2, switch to feature 7"
+   ```
+
+3. **Ralph detects the change** and incorporates the nudge into the next iteration.
+
+### Configuration
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+nudge_file: nudges.json
+```
+
+### Nudge vs Memory
+
+| Aspect | Nudges | Memory |
+|--------|--------|--------|
+| Purpose | Real-time guidance | Long-term knowledge |
+| Duration | Single iteration (acknowledged after use) | Persistent across sessions |
+| Use case | Steering current work | Maintaining consistency |
+| Creation | Manual (user adds) | Manual or automatic (agent extracts) |
+
+Use nudges for immediate guidance, use memory for architectural decisions and conventions that should persist.
+
+### Example Workflow
+
+1. **Start iterations:**
+   ```bash
+   ralph -iterations 10 -verbose
+   ```
+
+2. **Notice the agent is working on the wrong feature.** Add a nudge:
+   ```bash
+   ralph -nudge "focus:Feature 7 is more urgent - please switch to that"
+   ```
+
+3. **Need to add a constraint.** Add another nudge:
+   ```bash
+   ralph -nudge "constraint:The API must remain backward compatible"
+   ```
+
+4. **Check current nudges:**
+   ```bash
+   ralph -show-nudges
+   ```
+
+5. **After run completes**, clear nudges if no longer needed:
+   ```bash
+   ralph -clear-nudges
+   ```
 
 ## Milestone-Based Progress Tracking
 

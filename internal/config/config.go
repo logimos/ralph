@@ -18,6 +18,8 @@ const (
 	DefaultMemoryFile = ".ralph-memory.json"
 	// DefaultMemoryRetention is the default number of days to retain memories
 	DefaultMemoryRetention = 90
+	// DefaultNudgeFile is the default path for the nudge file
+	DefaultNudgeFile = "nudges.json"
 )
 
 // Config holds the application configuration
@@ -55,6 +57,11 @@ type Config struct {
 	// Milestone-related configuration
 	ListMilestones  bool   // List all milestones with progress
 	ShowMilestone   string // Show features for a specific milestone
+	// Nudge-related configuration
+	NudgeFile    string // Path to nudge file (default: nudges.json)
+	Nudge        string // One-time inline nudge (format: "type:content")
+	ClearNudges  bool   // Clear all nudges
+	ShowNudges   bool   // Display current nudges
 }
 
 // New creates a new Config with default values
@@ -69,5 +76,6 @@ func New() *Config {
 		LogLevel:         DefaultLogLevel,
 		MemoryFile:       DefaultMemoryFile,
 		MemoryRetention:  DefaultMemoryRetention,
+		NudgeFile:        DefaultNudgeFile,
 	}
 }

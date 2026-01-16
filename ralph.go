@@ -15,6 +15,7 @@ import (
 	"github.com/logimos/ralph/internal/environment"
 	"github.com/logimos/ralph/internal/memory"
 	"github.com/logimos/ralph/internal/milestone"
+	"github.com/logimos/ralph/internal/nudge"
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
@@ -51,6 +52,15 @@ func main() {
 	// Handle memory commands (don't require iterations or plan file)
 	if cfg.ShowMemory || cfg.ClearMemory || cfg.AddMemory != "" {
 		if err := handleMemoryCommands(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Handle nudge commands (don't require iterations or plan file)
+	if cfg.ShowNudges || cfg.ClearNudges || cfg.Nudge != "" {
+		if err := handleNudgeCommands(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -135,6 +145,11 @@ func parseFlags() *config.Config {
 	// Milestone-related flags
 	flag.BoolVar(&cfg.ListMilestones, "milestones", false, "List all milestones with progress")
 	flag.StringVar(&cfg.ShowMilestone, "milestone", "", "Show features for a specific milestone")
+	// Nudge-related flags
+	flag.StringVar(&cfg.NudgeFile, "nudge-file", config.DefaultNudgeFile, "Path to nudge file")
+	flag.StringVar(&cfg.Nudge, "nudge", "", "Add one-time nudge (format: type:content where type is focus, skip, constraint, or style)")
+	flag.BoolVar(&cfg.ClearNudges, "clear-nudges", false, "Clear all nudges")
+	flag.BoolVar(&cfg.ShowNudges, "show-nudges", false, "Display current nudges")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -214,6 +229,21 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  Commands:\n")
 		fmt.Fprintf(os.Stderr, "    -milestones          List all milestones with progress\n")
 		fmt.Fprintf(os.Stderr, "    -milestone <name>    Show features for a specific milestone\n")
+		fmt.Fprintf(os.Stderr, "\nNudge System:\n")
+		fmt.Fprintf(os.Stderr, "  Nudges provide lightweight mid-run guidance without stopping execution.\n")
+		fmt.Fprintf(os.Stderr, "  Create/edit nudges.json during a run to steer Ralph.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Nudge types:\n")
+		fmt.Fprintf(os.Stderr, "    focus      - Prioritize a specific feature or approach\n")
+		fmt.Fprintf(os.Stderr, "    skip       - Defer a feature or skip certain work\n")
+		fmt.Fprintf(os.Stderr, "    constraint - Add a requirement or limitation\n")
+		fmt.Fprintf(os.Stderr, "    style      - Specify coding style preferences\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -nudge <type:content>  Add a one-time nudge\n")
+		fmt.Fprintf(os.Stderr, "    -show-nudges           Display current nudges\n")
+		fmt.Fprintf(os.Stderr, "    -clear-nudges          Clear all nudges\n")
+		fmt.Fprintf(os.Stderr, "    -nudge-file <path>     Use custom nudge file\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -229,6 +259,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -show-memory                     # Display stored memories\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -add-memory \"decision:Use PostgreSQL for persistence\"  # Add a memory\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -clear-memory                    # Clear all memories\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -nudge \"focus:Work on feature 5 first\"  # Add a one-time nudge\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -show-nudges                     # Display current nudges\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -clear-nudges                    # Clear all nudges\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -345,6 +378,10 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.MemoryRetention > 0 && !explicitFlags["memory-retention"] {
 		cfg.MemoryRetention = fileCfg.MemoryRetention
 	}
+	// Nudge settings
+	if fileCfg.NudgeFile != "" && !explicitFlags["nudge-file"] {
+		cfg.NudgeFile = fileCfg.NudgeFile
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -446,6 +483,12 @@ func runIterations(cfg *config.Config) error {
 		output.Debug("Pruned %d expired memories", pruned)
 	}
 
+	// Load nudge store
+	nudgeStore := nudge.NewStore(cfg.NudgeFile)
+	if err := nudgeStore.Load(); err != nil {
+		output.Debug("No nudge file loaded: %v", err)
+	}
+
 	output.Header("Ralph - Iterative Development Workflow")
 	output.Info("Plan file: %s", cfg.PlanFile)
 	output.Info("Progress file: %s", cfg.ProgressFile)
@@ -454,6 +497,9 @@ func runIterations(cfg *config.Config) error {
 	output.Info("Recovery strategy: %s (max %d retries)", cfg.RecoveryStrategy, cfg.MaxRetries)
 	if memStore.Count() > 0 {
 		output.Info("Memory: %d entries loaded from %s", memStore.Count(), cfg.MemoryFile)
+	}
+	if nudgeStore.ActiveCount() > 0 {
+		output.Info("Nudges: %d active nudge(s) from %s", nudgeStore.ActiveCount(), cfg.NudgeFile)
 	}
 	
 	// Load plans and create milestone manager
@@ -514,6 +560,14 @@ func runIterations(cfg *config.Config) error {
 			spinner.Start()
 		}
 
+		// Check for nudge file changes (allows user to add nudges mid-run)
+		if reloaded, _ := nudgeStore.Reload(); reloaded && cfg.Verbose {
+			output.Debug("Nudge file updated, reloaded %d nudge(s)", nudgeStore.ActiveCount())
+		}
+
+		// Capture active nudges before this iteration
+		activeNudges := nudgeStore.GetActive()
+
 		// Build the prompt for the AI agent, including any recovery guidance
 		iterPrompt := prompt.BuildIterationPrompt(cfg)
 		
@@ -522,6 +576,12 @@ func runIterations(cfg *config.Config) error {
 		memoryContext := memStore.BuildPromptContext("", 10) // Get top 10 relevant memories
 		if memoryContext != "" {
 			iterPrompt = memoryContext + iterPrompt
+		}
+
+		// Inject nudge context
+		nudgeContext := nudgeStore.BuildPromptContext()
+		if nudgeContext != "" {
+			iterPrompt = nudgeContext + iterPrompt
 		}
 		
 		if additionalPromptGuidance != "" {
@@ -557,6 +617,22 @@ func runIterations(cfg *config.Config) error {
 		memoriesStored := extractAndStoreMemories(memStore, result, "")
 		if memoriesStored > 0 && cfg.Verbose {
 			output.Debug("Extracted and stored %d new memories from agent output", memoriesStored)
+		}
+
+		// Acknowledge nudges that were injected into this iteration
+		if len(activeNudges) > 0 {
+			if err := nudgeStore.AcknowledgeAll(); err != nil {
+				output.Debug("Failed to acknowledge nudges: %v", err)
+			} else {
+				// Log nudge acknowledgment to progress file
+				ackMsg := nudge.FormatAcknowledgment(activeNudges)
+				if ackMsg != "" {
+					appendProgress(cfg.ProgressFile, ackMsg)
+				}
+				if cfg.Verbose {
+					output.Debug("Acknowledged %d nudge(s)", len(activeNudges))
+				}
+			}
 		}
 
 		// Check for completion signal (even if there was an error, the output might contain it)
@@ -819,6 +895,56 @@ func appendProgress(path string, message string) error {
 
 	if _, err := f.WriteString(entry); err != nil {
 		return fmt.Errorf("failed to write to progress file: %w", err)
+	}
+
+	return nil
+}
+
+// handleNudgeCommands processes nudge-related CLI commands
+func handleNudgeCommands(cfg *config.Config) error {
+	store := nudge.NewStore(cfg.NudgeFile)
+
+	if err := store.Load(); err != nil {
+		// If file doesn't exist and we're clearing, that's fine
+		if !cfg.ClearNudges {
+			return fmt.Errorf("failed to load nudges: %w", err)
+		}
+	}
+
+	// Handle clear nudges command
+	if cfg.ClearNudges {
+		if err := store.Clear(); err != nil {
+			return fmt.Errorf("failed to clear nudges: %w", err)
+		}
+		fmt.Printf("Nudges cleared: %s\n", cfg.NudgeFile)
+		return nil
+	}
+
+	// Handle add nudge command
+	if cfg.Nudge != "" {
+		parts := strings.SplitN(cfg.Nudge, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid nudge format: expected 'type:content' (e.g., 'focus:Work on feature 5')")
+		}
+
+		nudgeType, err := nudge.ParseNudgeType(parts[0])
+		if err != nil {
+			return err
+		}
+
+		n, err := store.Add(nudgeType, parts[1], 0)
+		if err != nil {
+			return fmt.Errorf("failed to add nudge: %w", err)
+		}
+
+		fmt.Printf("Nudge added: [%s] %s\n", strings.ToUpper(string(n.Type)), n.Content)
+		return nil
+	}
+
+	// Handle show nudges command (default if no other nudge command)
+	if cfg.ShowNudges {
+		fmt.Println(store.Summary())
+		return nil
 	}
 
 	return nil

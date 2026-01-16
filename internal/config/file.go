@@ -57,6 +57,9 @@ type FileConfig struct {
 	// Memory settings
 	MemoryFile      string `json:"memory_file,omitempty" yaml:"memory_file,omitempty"`
 	MemoryRetention int    `json:"memory_retention,omitempty" yaml:"memory_retention,omitempty"`
+
+	// Nudge settings
+	NudgeFile string `json:"nudge_file,omitempty" yaml:"nudge_file,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -290,5 +293,10 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.MemoryRetention > 0 && cfg.MemoryRetention == DefaultMemoryRetention {
 		cfg.MemoryRetention = fileCfg.MemoryRetention
+	}
+
+	// Apply nudge settings
+	if fileCfg.NudgeFile != "" && cfg.NudgeFile == DefaultNudgeFile {
+		cfg.NudgeFile = fileCfg.NudgeFile
 	}
 }

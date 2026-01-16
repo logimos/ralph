@@ -441,3 +441,84 @@ internal/milestone/
 - Consider adding milestone dependencies (milestone A must complete before B)
 - The milestone package is independent and follows the established package-per-concern pattern
 
+## 2026-01-16: User Nudge Hooks (Feature #6)
+
+### Completed
+- Created `internal/nudge` package with comprehensive nudge system:
+  - `nudge.go` - Nudge struct, NudgeType enum, Store operations, file watching
+  - `nudge_test.go` - 25+ tests covering all nudge functionality
+- Implemented nudge types:
+  - `focus` - Prioritize a specific feature or approach
+  - `skip` - Defer a feature or skip certain work
+  - `constraint` - Add a requirement or limitation
+  - `style` - Specify coding style preferences
+- Implemented nudge file operations:
+  - `NewStore()` - Create nudge store with configurable path
+  - `Load()` / `Save()` - Persist nudges to `nudges.json`
+  - `Add()` - Add new nudge entries with priority
+  - `Clear()` - Remove all nudges
+  - `Acknowledge()` / `AcknowledgeAll()` - Mark nudges as processed
+- Implemented file change detection:
+  - `HasChanged()` - Check if nudge file modified since last load
+  - `Reload()` - Reload nudge file if changed (for mid-run updates)
+- Implemented prompt injection:
+  - `BuildPromptContext()` - Create formatted nudge context for agent prompts
+  - Nudges sorted by priority (highest first) then by creation time
+  - Grouped by type for clear presentation
+- Added CLI flags:
+  - `-nudge <type:content>` - Add a one-time nudge
+  - `-show-nudges` - Display current nudges
+  - `-clear-nudges` - Clear all nudges
+  - `-nudge-file` - Custom nudge file path
+- Added config file support: `nudge_file` field in FileConfig
+- Integrated nudges into `runIterations()`:
+  - Loads nudge store at start
+  - Checks for file changes before each iteration (mid-run detection)
+  - Injects nudge context into agent prompts
+  - Acknowledges nudges after iteration completes
+  - Logs acknowledgments to progress.txt
+- Updated README.md with comprehensive nudge documentation:
+  - Nudge types and usage
+  - Nudge file format
+  - CLI commands
+  - Mid-run guidance workflow
+  - Nudge vs Memory comparison
+  - Example workflow
+- All 150+ tests passing (25+ nudge tests + existing tests)
+
+### Package Structure
+```
+internal/nudge/
+├── nudge.go      # Store, Nudge struct, file ops, prompt building, acknowledgment
+└── nudge_test.go # 25+ tests covering all functionality
+```
+
+### Nudge File Format
+```json
+{
+  "nudges": [
+    {
+      "id": "nudge_1705420800123456789",
+      "type": "focus",
+      "content": "Work on feature 5 first",
+      "priority": 10,
+      "created_at": "2026-01-16T12:00:00Z",
+      "acknowledged": false
+    }
+  ],
+  "last_updated": "2026-01-16T12:00:00Z"
+}
+```
+
+### Notes for Next Developer
+- Nudges are checked for changes at the start of each iteration (file watching)
+- Active nudges are those with `acknowledged: false`
+- Nudges are acknowledged after being injected into a prompt
+- Priority field controls sorting (higher = more important, default 0)
+- Nudge types are validated when adding via CLI
+- The store is thread-safe with mutex protection
+- Nudge context is injected before memory context in the prompt
+- Consider adding nudge expiration (auto-clear after N iterations)
+- Consider adding nudge templates for common guidance patterns
+- The nudge package is independent and follows the established package-per-concern pattern
+

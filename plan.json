@@ -111,7 +111,7 @@
             "Document nudge system in README"
         ],
         "expected_output": "Users can create/edit nudges.json during a run to steer Ralph without stopping, nudges are incorporated into subsequent iterations",
-        "tested": false
+        "tested": true
     },
     {
         "id": 7,
