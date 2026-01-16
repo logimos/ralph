@@ -20,6 +20,8 @@ const (
 	DefaultMemoryRetention = 90
 	// DefaultNudgeFile is the default path for the nudge file
 	DefaultNudgeFile = "nudges.json"
+	// DefaultScopeLimit is the default max iterations per feature (0 = unlimited)
+	DefaultScopeLimit = 0
 )
 
 // Config holds the application configuration
@@ -62,6 +64,10 @@ type Config struct {
 	Nudge        string // One-time inline nudge (format: "type:content")
 	ClearNudges  bool   // Clear all nudges
 	ShowNudges   bool   // Display current nudges
+	// Scope control configuration
+	ScopeLimit   int    // Max iterations per feature (0 = unlimited)
+	Deadline     string // Deadline duration (e.g., "1h", "30m", "2h30m")
+	ListDeferred bool   // List deferred features
 }
 
 // New creates a new Config with default values
@@ -77,5 +83,6 @@ func New() *Config {
 		MemoryFile:       DefaultMemoryFile,
 		MemoryRetention:  DefaultMemoryRetention,
 		NudgeFile:        DefaultNudgeFile,
+		ScopeLimit:       DefaultScopeLimit,
 	}
 }

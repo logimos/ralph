@@ -19,6 +19,7 @@ import (
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
+	"github.com/logimos/ralph/internal/scope"
 	"github.com/logimos/ralph/internal/ui"
 )
 
@@ -81,10 +82,17 @@ func main() {
 	}
 
 	// Handle list commands (don't require iterations)
-	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested {
+	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested || cfg.ListDeferred {
 		if err := validateConfig(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
+		}
+		if cfg.ListDeferred {
+			if err := listDeferredFeatures(cfg); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
 		if err := listPlanStatus(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -150,6 +158,10 @@ func parseFlags() *config.Config {
 	flag.StringVar(&cfg.Nudge, "nudge", "", "Add one-time nudge (format: type:content where type is focus, skip, constraint, or style)")
 	flag.BoolVar(&cfg.ClearNudges, "clear-nudges", false, "Clear all nudges")
 	flag.BoolVar(&cfg.ShowNudges, "show-nudges", false, "Display current nudges")
+	// Scope control flags
+	flag.IntVar(&cfg.ScopeLimit, "scope-limit", config.DefaultScopeLimit, "Max iterations per feature (0 = unlimited)")
+	flag.StringVar(&cfg.Deadline, "deadline", "", "Deadline duration (e.g., '1h', '30m', '2h30m')")
+	flag.BoolVar(&cfg.ListDeferred, "list-deferred", false, "List deferred features")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -244,6 +256,17 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    -show-nudges           Display current nudges\n")
 		fmt.Fprintf(os.Stderr, "    -clear-nudges          Clear all nudges\n")
 		fmt.Fprintf(os.Stderr, "    -nudge-file <path>     Use custom nudge file\n")
+		fmt.Fprintf(os.Stderr, "\nScope Control:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph supports smart scope control to prevent over-building.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Options:\n")
+		fmt.Fprintf(os.Stderr, "    -scope-limit <n>       Max iterations per feature (0 = unlimited)\n")
+		fmt.Fprintf(os.Stderr, "    -deadline <duration>   Time limit for the run (e.g., '1h', '30m', '2h30m')\n")
+		fmt.Fprintf(os.Stderr, "    -list-deferred         List features that have been deferred\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  When a feature exceeds its iteration limit or the deadline is reached,\n")
+		fmt.Fprintf(os.Stderr, "  Ralph automatically defers the feature and moves to the next one.\n")
+		fmt.Fprintf(os.Stderr, "  Deferred features are marked in plan.json with 'deferred: true'.\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -262,6 +285,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -nudge \"focus:Work on feature 5 first\"  # Add a one-time nudge\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -show-nudges                     # Display current nudges\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -clear-nudges                    # Clear all nudges\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -scope-limit 3     # Max 3 iterations per feature\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -iterations 10 -deadline 2h      # 2 hour time limit\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-deferred                   # Show deferred features\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -382,6 +408,13 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.NudgeFile != "" && !explicitFlags["nudge-file"] {
 		cfg.NudgeFile = fileCfg.NudgeFile
 	}
+	// Scope control settings
+	if fileCfg.ScopeLimit > 0 && !explicitFlags["scope-limit"] {
+		cfg.ScopeLimit = fileCfg.ScopeLimit
+	}
+	if fileCfg.Deadline != "" && !explicitFlags["deadline"] {
+		cfg.Deadline = fileCfg.Deadline
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -405,7 +438,7 @@ func validateConfig(cfg *config.Config) error {
 	}
 
 	// Skip iteration validation if we're just listing status or milestones
-	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested || cfg.ListMilestones || cfg.ShowMilestone != "" {
+	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested || cfg.ListMilestones || cfg.ShowMilestone != "" || cfg.ListDeferred {
 		if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
 			return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
 		}
@@ -433,6 +466,18 @@ func validateConfig(cfg *config.Config) error {
 	// Validate max retries
 	if cfg.MaxRetries < 0 {
 		return fmt.Errorf("max-retries cannot be negative")
+	}
+
+	// Validate scope limit
+	if cfg.ScopeLimit < 0 {
+		return fmt.Errorf("scope-limit cannot be negative")
+	}
+
+	// Validate deadline format
+	if cfg.Deadline != "" {
+		if _, err := config.ParseDeadline(cfg.Deadline); err != nil {
+			return fmt.Errorf("invalid deadline format: %w", err)
+		}
 	}
 
 	return nil
@@ -536,6 +581,24 @@ func runIterations(cfg *config.Config) error {
 	strategyType, _ := recovery.ParseStrategyType(cfg.RecoveryStrategy)
 	recoveryMgr := recovery.NewRecoveryManager(cfg.MaxRetries, strategyType)
 
+	// Initialize scope manager
+	scopeConstraints := &scope.Constraints{
+		MaxIterationsPerFeature: cfg.ScopeLimit,
+		AutoDefer:               true,
+	}
+	scopeMgr := scope.NewManager(scopeConstraints)
+
+	// Set deadline if specified
+	if cfg.Deadline != "" {
+		deadline, _ := config.ParseDeadline(cfg.Deadline)
+		scopeMgr.SetDeadline(deadline)
+	}
+
+	// Show scope info if scope control is enabled
+	if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
+		output.Info("Scope control: %s", formatScopeInfo(cfg))
+	}
+
 	// Track metrics for summary
 	var summary ui.Summary
 	summary.TotalIterations = cfg.Iterations
@@ -543,14 +606,77 @@ func runIterations(cfg *config.Config) error {
 
 	// Track the current feature being worked on (extracted from output if possible)
 	currentFeatureID := 0
+	currentFeatureSteps := 0
+	currentFeatureDesc := ""
 	var additionalPromptGuidance string
 
 	for i := 1; i <= cfg.Iterations; i++ {
+		// Check deadline before starting iteration
+		if scopeMgr.IsDeadlineExceeded() {
+			output.Warn("Deadline exceeded - stopping execution")
+			break
+		}
+
+		// Get current feature from plans (first untested, non-deferred)
+		detectedFeatureID, detectedSteps, detectedDesc := extractCurrentFeatureFromPlans(cfg.PlanFile)
+		if detectedFeatureID > 0 && detectedFeatureID != currentFeatureID {
+			// New feature detected - start tracking it
+			currentFeatureID = detectedFeatureID
+			currentFeatureSteps = detectedSteps
+			currentFeatureDesc = detectedDesc
+			scopeMgr.StartFeature(currentFeatureID, currentFeatureSteps, currentFeatureDesc)
+			if cfg.Verbose {
+				complexity := scope.EstimateComplexity(currentFeatureSteps, currentFeatureDesc)
+				output.Debug("Working on feature #%d (%s complexity): %s", 
+					currentFeatureID, complexity, currentFeatureDesc)
+			}
+		}
+
 		output.Header("Iteration %d/%d", i, cfg.Iterations)
 		summary.IterationsRun = i
 
+		// Record iteration for scope tracking
+		scopeMgr.RecordIteration(currentFeatureID)
+
+		// Check if current feature should be deferred
+		if shouldDefer, reason := scopeMgr.ShouldDefer(currentFeatureID); shouldDefer && currentFeatureID > 0 {
+			scopeMgr.DeferFeature(currentFeatureID, reason)
+			output.Warn("Feature #%d deferred: %s", currentFeatureID, scope.FormatDeferralReason(reason))
+			
+			// Mark feature as deferred in plan file
+			if err := markFeatureDeferred(cfg.PlanFile, currentFeatureID, string(reason)); err != nil {
+				output.Debug("Failed to update plan file: %v", err)
+			}
+			
+			// Log deferral to progress file
+			deferMsg := fmt.Sprintf("DEFERRED: Feature #%d - %s (iterations used: %d)", 
+				currentFeatureID, scope.FormatDeferralReason(reason), 
+				scopeMgr.GetFeatureScope(currentFeatureID).IterationsUsed)
+			appendProgress(cfg.ProgressFile, deferMsg)
+			
+			summary.FeaturesSkipped++
+			
+			// Reset current feature - agent will move to next
+			currentFeatureID = 0
+		}
+
+		// Check for simplification suggestion
+		if currentFeatureID > 0 && scopeMgr.ShouldSuggestSimplification(currentFeatureID) && 
+			!scopeMgr.WasSimplificationSuggested(currentFeatureID) {
+			suggestions := scope.SuggestSimplification(currentFeatureSteps, currentFeatureDesc)
+			output.Warn("Feature #%d may be complex. Suggestions:", currentFeatureID)
+			for _, s := range suggestions {
+				output.Print("  - %s", s)
+			}
+			scopeMgr.MarkSimplificationSuggested(currentFeatureID)
+		}
+
 		if cfg.Verbose {
 			output.Debug("Executing agent command...")
+			if cfg.ScopeLimit > 0 && currentFeatureID > 0 {
+				remaining := scopeMgr.RemainingIterations(currentFeatureID)
+				output.Debug("Scope: %d iterations remaining for current feature", remaining)
+			}
 		}
 
 		// Show spinner for agent execution if TTY
@@ -644,6 +770,11 @@ func runIterations(cfg *config.Config) error {
 			output.PrintSummary(summary)
 			printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
 			
+			// Show scope summary if scope control was active
+			if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
+				printScopeSummary(output, scopeMgr, cfg.Verbose)
+			}
+			
 			// Show final milestone status
 			if milestoneMgr != nil && milestoneMgr.HasMilestones() {
 				output.SubHeader("Final Milestone Status")
@@ -719,6 +850,11 @@ func runIterations(cfg *config.Config) error {
 	summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
 	output.PrintSummary(summary)
 	printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
+	
+	// Print scope summary if scope control was active
+	if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
+		printScopeSummary(output, scopeMgr, cfg.Verbose)
+	}
 	
 	// Print memory summary if we have memories
 	if memStore.Count() > 0 && cfg.Verbose {
@@ -834,6 +970,40 @@ func listPlanStatus(cfg *config.Config) error {
 		} else {
 			plan.Print(untested)
 		}
+	}
+
+	return nil
+}
+
+// listDeferredFeatures displays features that have been deferred due to scope constraints
+func listDeferredFeatures(cfg *config.Config) error {
+	plans, err := plan.ReadFile(cfg.PlanFile)
+	if err != nil {
+		return err
+	}
+
+	deferred := plan.FilterDeferred(plans, true)
+
+	fmt.Printf("=== Deferred Features (from %s) ===\n", cfg.PlanFile)
+	if len(deferred) == 0 {
+		fmt.Println("No deferred features found")
+		fmt.Println()
+		fmt.Println("Features are deferred when they exceed scope constraints:")
+		fmt.Println("  - Iteration limit reached (-scope-limit flag)")
+		fmt.Println("  - Deadline reached (-deadline flag)")
+		fmt.Println()
+		fmt.Println("To use scope control, run with:")
+		fmt.Printf("  %s -iterations 10 -scope-limit 3  # Max 3 iterations per feature\n", os.Args[0])
+		fmt.Printf("  %s -iterations 10 -deadline 1h   # 1 hour time limit\n", os.Args[0])
+	} else {
+		for _, p := range deferred {
+			reason := p.DeferReason
+			if reason == "" {
+				reason = "unspecified"
+			}
+			fmt.Printf("  %d. %s [%s] - %s\n", p.ID, p.Category, reason, p.Description)
+		}
+		fmt.Printf("\nTotal deferred: %d features\n", len(deferred))
 	}
 
 	return nil
@@ -1021,6 +1191,75 @@ func extractAndStoreMemories(store *memory.Store, output, category string) int {
 	}
 
 	return stored
+}
+
+// formatScopeInfo returns a formatted string of scope control settings
+func formatScopeInfo(cfg *config.Config) string {
+	var parts []string
+	if cfg.ScopeLimit > 0 {
+		parts = append(parts, fmt.Sprintf("max %d iterations/feature", cfg.ScopeLimit))
+	}
+	if cfg.Deadline != "" {
+		parts = append(parts, fmt.Sprintf("deadline %s", cfg.Deadline))
+	}
+	if len(parts) == 0 {
+		return "unlimited"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// markFeatureDeferred updates the plan file to mark a feature as deferred
+func markFeatureDeferred(planFile string, featureID int, reason string) error {
+	plans, err := plan.ReadFile(planFile)
+	if err != nil {
+		return err
+	}
+
+	if plan.MarkDeferred(plans, featureID, reason) {
+		return plan.WriteFile(planFile, plans)
+	}
+	return nil
+}
+
+// printScopeSummary prints a summary of scope control results
+func printScopeSummary(output *ui.UI, scopeMgr *scope.Manager, verbose bool) {
+	status := scopeMgr.GetStatus()
+	
+	if status.DeferredCount > 0 || verbose {
+		output.SubHeader("Scope Summary")
+		output.Print("Elapsed time: %s", status.ElapsedTime.Round(time.Second))
+		
+		if status.DeadlineSet {
+			if status.DeadlineExceeded {
+				output.Warn("Deadline: EXCEEDED")
+			} else {
+				output.Print("Time remaining: %s", status.RemainingTime.Round(time.Second))
+			}
+		}
+		
+		if status.DeferredCount > 0 {
+			output.Warn("Deferred features: %d (IDs: %v)", status.DeferredCount, status.DeferredFeatureIDs)
+			output.Print("")
+			output.Print("Deferred features will remain marked in plan.json.")
+			output.Print("Review and un-defer them manually when ready to continue.")
+		}
+	}
+}
+
+// extractCurrentFeatureFromPlans tries to get the current feature being worked on
+func extractCurrentFeatureFromPlans(planFile string) (int, int, string) {
+	plans, err := plan.ReadFile(planFile)
+	if err != nil {
+		return 0, 0, ""
+	}
+
+	// Find first untested, non-deferred feature
+	for _, p := range plans {
+		if !p.Tested && !p.Deferred {
+			return p.ID, len(p.Steps), p.Description
+		}
+	}
+	return 0, 0, ""
 }
 
 // handleMilestoneCommands processes milestone-related CLI commands

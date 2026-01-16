@@ -179,7 +179,7 @@
             "Document scope control in README"
         ],
         "expected_output": "Ralph automatically defers or simplifies features when constraints are reached, preventing over-building while pushing toward completion",
-        "tested": false
+        "tested": true
     },
     {
         "id": 10,

@@ -18,6 +18,8 @@ type Plan struct {
 	Tested         bool     `json:"tested,omitempty"`
 	Milestone      string   `json:"milestone,omitempty"`       // Optional milestone this feature belongs to
 	MilestoneOrder int      `json:"milestone_order,omitempty"` // Order within the milestone (for prioritization)
+	Deferred       bool     `json:"deferred,omitempty"`        // Whether this feature has been deferred due to scope constraints
+	DeferReason    string   `json:"defer_reason,omitempty"`    // Reason for deferral (if deferred)
 }
 
 // ReadFile reads and parses a plan file
@@ -33,6 +35,53 @@ func ReadFile(path string) ([]Plan, error) {
 	}
 
 	return plans, nil
+}
+
+// WriteFile writes plans to a plan file
+func WriteFile(path string, plans []Plan) error {
+	data, err := json.MarshalIndent(plans, "", "    ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal plans: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write plan file: %w", err)
+	}
+
+	return nil
+}
+
+// MarkDeferred marks a plan as deferred with the given reason
+func MarkDeferred(plans []Plan, featureID int, reason string) bool {
+	for i := range plans {
+		if plans[i].ID == featureID {
+			plans[i].Deferred = true
+			plans[i].DeferReason = reason
+			return true
+		}
+	}
+	return false
+}
+
+// FilterDeferred returns plans filtered by deferred status
+func FilterDeferred(plans []Plan, deferred bool) []Plan {
+	var result []Plan
+	for _, plan := range plans {
+		if plan.Deferred == deferred {
+			result = append(result, plan)
+		}
+	}
+	return result
+}
+
+// GetByID returns a plan by its ID, or nil if not found
+func GetByID(plans []Plan, id int) *Plan {
+	for i := range plans {
+		if plans[i].ID == id {
+			return &plans[i]
+		}
+	}
+	return nil
 }
 
 // Filter filters plans by tested status

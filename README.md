@@ -16,6 +16,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Environment Detection**: Automatically adapts to CI and local environments
 - **Long-Running Memory**: Remembers architectural decisions and conventions across sessions
 - **Nudge System**: Lightweight mid-run guidance without stopping execution
+- **Smart Scope Control**: Iteration budgets and time limits to prevent over-building
 
 ## Installation
 
@@ -203,6 +204,14 @@ Nudge Options:
         Clear all nudges
   -nudge-file string
         Path to nudge file (default "nudges.json")
+
+Scope Control Options:
+  -scope-limit int
+        Max iterations per feature (0 = unlimited)
+  -deadline string
+        Time limit for the run (e.g., "1h", "30m", "2h30m")
+  -list-deferred
+        List features that have been deferred
 ```
 
 ### Output Options
@@ -884,6 +893,155 @@ Use nudges for immediate guidance, use memory for architectural decisions and co
    ralph -clear-nudges
    ```
 
+## Smart Scope Control
+
+Ralph includes smart scope control to prevent over-building and ensure timely completion. You can set iteration budgets per feature and time limits for entire runs. When limits are reached, features are automatically deferred rather than blocking progress.
+
+### Scope Constraints
+
+| Constraint | Description | Flag |
+|------------|-------------|------|
+| Iteration Limit | Max iterations allowed per feature | `-scope-limit` |
+| Deadline | Time limit for the entire run | `-deadline` |
+
+### Usage Examples
+
+```bash
+# Limit each feature to 3 iterations max
+ralph -iterations 10 -scope-limit 3
+
+# Set a 2 hour deadline for the entire run
+ralph -iterations 10 -deadline 2h
+
+# Combine both constraints
+ralph -iterations 20 -scope-limit 5 -deadline 1h30m
+
+# View deferred features
+ralph -list-deferred
+```
+
+### How It Works
+
+1. **Iteration Budget**: Each feature gets a budget of `-scope-limit` iterations. If the feature isn't complete after that many iterations, it's marked as deferred and Ralph moves to the next feature.
+
+2. **Deadline**: When the deadline is reached, Ralph stops execution cleanly rather than abandoning mid-iteration.
+
+3. **Feature Deferral**: Deferred features are marked in plan.json with `"deferred": true` and a `"defer_reason"` field. This allows you to:
+   - See which features need more attention
+   - Manually un-defer features when ready
+   - Track which features consistently exceed budgets
+
+4. **Complexity Estimation**: Ralph estimates feature complexity based on step count and description keywords, using this to suggest when simplification might help.
+
+### Deferral Reasons
+
+| Reason | Description |
+|--------|-------------|
+| `iteration_limit` | Feature exceeded its iteration budget |
+| `deadline` | Deadline was reached during feature work |
+| `complexity` | Feature deemed too complex for current scope |
+| `manual` | Feature was manually deferred |
+
+### Simplification Suggestions
+
+When a feature reaches half its iteration budget or is detected as high complexity, Ralph suggests simplification strategies:
+
+- Breaking large features into smaller pieces
+- Implementing a minimal version first
+- Focusing on core functionality and deferring edge cases
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# Set iteration limit per feature (default: 0 = unlimited)
+ralph -iterations 10 -scope-limit 3
+
+# Set deadline (duration format: 1h, 30m, 2h30m)
+ralph -iterations 10 -deadline 2h
+
+# List features that were deferred
+ralph -list-deferred
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+scope_limit: 5       # Max iterations per feature
+deadline: "2h"       # Time limit for the run
+```
+
+### Deferred Features in plan.json
+
+When a feature is deferred, it's updated in plan.json:
+
+```json
+{
+  "id": 5,
+  "description": "Complex feature",
+  "tested": false,
+  "deferred": true,
+  "defer_reason": "iteration_limit"
+}
+```
+
+### Listing Deferred Features
+
+```bash
+ralph -list-deferred
+
+# Output:
+# === Deferred Features (from plan.json) ===
+#   5. chore [iteration_limit] - Complex refactoring task
+#   8. feature [deadline] - Large feature implementation
+#
+# Total deferred: 2 features
+```
+
+### Example Workflow
+
+1. **Start with scope limits:**
+   ```bash
+   ralph -iterations 20 -scope-limit 3 -deadline 1h
+   ```
+
+2. **Ralph works through features:**
+   - Feature 1: Complete in 2 iterations ✓
+   - Feature 2: Complete in 1 iteration ✓
+   - Feature 3: Hit iteration limit after 3 iterations → Deferred
+   - Feature 4: Complete in 2 iterations ✓
+   - Feature 5: Deadline reached → Deferred
+
+3. **Check what was deferred:**
+   ```bash
+   ralph -list-deferred
+   ```
+
+4. **Later, work on deferred features:**
+   - Manually remove `deferred` and `defer_reason` from plan.json
+   - Run again with a higher scope limit or more time
+
+### Scope Status Output
+
+During execution with scope control enabled, Ralph displays:
+
+```
+=== Scope Summary ===
+Elapsed time: 45m30s
+Time remaining: 14m30s
+Deferred features: 2 (IDs: [3 5])
+
+Deferred features will remain marked in plan.json.
+Review and un-defer them manually when ready to continue.
+```
+
+### Best Practices
+
+1. **Start conservative**: Begin with lower scope limits to identify problematic features quickly
+2. **Review deferrals**: Regularly check `-list-deferred` to understand what needs attention
+3. **Simplify complex features**: If a feature is repeatedly deferred, break it into smaller pieces
+4. **Adjust over time**: Tune your scope limits based on your project's complexity
+
 ## Milestone-Based Progress Tracking
 
 Ralph supports milestone-based progress tracking to help you organize features into meaningful project milestones like "Alpha", "Beta", or "MVP". This provides a higher-level view of progress beyond individual features.
@@ -1084,6 +1242,8 @@ Plans are JSON files containing an array of feature objects:
 - `tested` (boolean): Whether the feature has been tested (default: false)
 - `milestone` (string): Optional milestone name this feature belongs to
 - `milestone_order` (number): Optional order within the milestone for prioritization
+- `deferred` (boolean): Whether the feature has been deferred due to scope constraints
+- `defer_reason` (string): Reason for deferral (e.g., "iteration_limit", "deadline")
 
 ## Workflow
 

@@ -522,3 +522,96 @@ internal/nudge/
 - Consider adding nudge templates for common guidance patterns
 - The nudge package is independent and follows the established package-per-concern pattern
 
+## 2026-01-16: Smart Scope Control (Feature #9)
+
+### Completed
+- Created `internal/scope` package with comprehensive scope management:
+  - `scope.go` - Constraints, Manager, FeatureScope structs and all operations
+  - `scope_test.go` - 30+ tests covering all scope functionality
+- Implemented scope constraints:
+  - `MaxIterationsPerFeature` - Max iterations allowed per feature
+  - `Deadline` - Optional time limit for the entire run
+  - `QualityThreshold` - Reserved for future quality requirements
+- Implemented feature complexity estimation:
+  - Based on step count (low: 1-2, medium: 3-5, high: 6+)
+  - Adjusted by description keywords (refactor, integration, security, etc.)
+  - Suggests iterations based on complexity
+- Implemented iteration budget tracking:
+  - Per-feature iteration counting
+  - Automatic deferral when limit exceeded
+  - Remaining iterations calculation
+- Implemented time budget tracking:
+  - Deadline parsing from duration strings (e.g., "1h", "30m", "2h30m")
+  - Automatic deadline checking before each iteration
+  - Remaining time calculation
+- Added `Deferred` and `DeferReason` fields to Plan struct
+- Added plan file update functions:
+  - `WriteFile()` - Write plans to JSON file
+  - `MarkDeferred()` - Mark a plan as deferred with reason
+  - `FilterDeferred()` - Filter plans by deferred status
+  - `GetByID()` - Get a plan by ID
+- Implemented simplification suggestions:
+  - Suggests breaking large features into smaller pieces
+  - Detects "and" in descriptions indicating multiple features
+  - Suggests minimal versions for comprehensive features
+- Added CLI flags:
+  - `-scope-limit` - Max iterations per feature (default: 0 = unlimited)
+  - `-deadline` - Time limit for run (e.g., "1h", "30m")
+  - `-list-deferred` - List deferred features
+- Added config file support: `scope_limit` and `deadline` fields
+- Integrated scope control into `runIterations()`:
+  - Tracks current feature from plan file
+  - Records iterations per feature
+  - Checks for deferral conditions
+  - Suggests simplification at half iteration limit
+  - Updates plan file with deferred status
+  - Logs deferrals to progress file
+  - Shows scope summary at end of run
+- Updated README.md with comprehensive scope control documentation:
+  - Scope constraints and usage examples
+  - How it works (iteration budget, deadline, deferral)
+  - Deferral reasons explained
+  - Simplification suggestions
+  - Configuration (CLI and file)
+  - Deferred features in plan.json
+  - Example workflow
+  - Best practices
+- All 170+ tests passing (30+ scope tests + existing tests)
+
+### Package Structure
+```
+internal/scope/
+├── scope.go      # Constraints, Manager, FeatureScope, complexity estimation
+└── scope_test.go # 30+ tests covering all functionality
+```
+
+### Scope Constraints
+```go
+type Constraints struct {
+    MaxIterationsPerFeature int       // 0 = unlimited
+    Deadline                time.Time // Zero = no deadline
+    QualityThreshold        int       // Reserved for future
+    AutoDefer               bool      // Auto-defer on limit
+}
+```
+
+### Complexity Levels
+| Complexity | Steps | Suggested Iterations |
+|------------|-------|---------------------|
+| Low        | 1-2   | 3                   |
+| Medium     | 3-5   | 5                   |
+| High       | 6+    | 10                  |
+
+### Notes for Next Developer
+- Scope manager is created in runIterations() with constraints from config
+- Current feature is detected from plan file (first untested, non-deferred)
+- Iteration recording happens at start of each iteration loop
+- Deferral check happens after recording, before agent execution
+- Simplification is suggested once per feature (tracked via SimplificationSuggested flag)
+- Deferred features are marked in plan.json for persistence
+- Deadline checking happens at start of iteration (before any work)
+- The scope package is independent and follows established package-per-concern pattern
+- Consider adding quality threshold enforcement in future iterations
+- Consider adding scope limit auto-adjustment based on complexity
+- The extractCurrentFeatureFromPlans function re-reads plan.json each iteration (could be optimized)
+

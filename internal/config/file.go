@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -60,6 +61,10 @@ type FileConfig struct {
 
 	// Nudge settings
 	NudgeFile string `json:"nudge_file,omitempty" yaml:"nudge_file,omitempty"`
+
+	// Scope control settings
+	ScopeLimit int    `json:"scope_limit,omitempty" yaml:"scope_limit,omitempty"` // Max iterations per feature
+	Deadline   string `json:"deadline,omitempty" yaml:"deadline,omitempty"`       // Deadline duration (e.g., "1h", "30m")
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -218,6 +223,18 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return fmt.Errorf("memory_retention cannot be negative")
 	}
 
+	// Validate scope limit if specified
+	if cfg.ScopeLimit < 0 {
+		return fmt.Errorf("scope_limit cannot be negative")
+	}
+
+	// Validate deadline format if specified
+	if cfg.Deadline != "" {
+		if _, err := parseDuration(cfg.Deadline); err != nil {
+			return fmt.Errorf("invalid deadline format %q: %w", cfg.Deadline, err)
+		}
+	}
+
 	return nil
 }
 
@@ -299,4 +316,29 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	if fileCfg.NudgeFile != "" && cfg.NudgeFile == DefaultNudgeFile {
 		cfg.NudgeFile = fileCfg.NudgeFile
 	}
+
+	// Apply scope control settings
+	if fileCfg.ScopeLimit > 0 && cfg.ScopeLimit == DefaultScopeLimit {
+		cfg.ScopeLimit = fileCfg.ScopeLimit
+	}
+	if fileCfg.Deadline != "" && cfg.Deadline == "" {
+		cfg.Deadline = fileCfg.Deadline
+	}
+}
+
+// parseDuration parses a duration string like "1h", "30m", "2h30m"
+func parseDuration(s string) (time.Duration, error) {
+	return time.ParseDuration(s)
+}
+
+// ParseDeadline parses a deadline string and returns the deadline time
+func ParseDeadline(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	d, err := parseDuration(s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Now().Add(d), nil
 }
