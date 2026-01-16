@@ -293,7 +293,7 @@
             "Ensure CI compatibility (detect non-TTY and adjust output)"
         ],
         "expected_output": "Ralph provides rich CLI output with progress bars, colors, and summary dashboards while supporting quiet/JSON modes for automation",
-        "tested": false
+        "tested": true
     },
     {
         "id": 15,

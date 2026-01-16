@@ -231,3 +231,69 @@ internal/environment/
 - The `IsCI()` method is available for other packages to check CI status
 - Environment profile is displayed in verbose output via `Summary()` method
 - Future enhancement: use RecommendedTimeout for actual timeout configuration
+
+## 2026-01-16: Enhanced CLI Output with Progress Visualization (Feature #14)
+
+### Completed
+- Created `internal/ui` package with comprehensive output formatting:
+  - `ui.go` - UI struct, OutputConfig, and all formatting methods
+  - `ui_test.go` - 30+ tests covering all UI functionality
+- Implemented core UI components:
+  - **Colored output**: Success (green), error (red), warning (yellow), info (blue), debug (gray)
+  - **Progress bar**: Shows iteration progress with percentage and ETA
+  - **Spinner**: Animated spinner for long-running operations (agent execution)
+  - **Summary dashboard**: End-of-run summary with box drawing characters
+  - **Table**: Structured table output for data display
+- Added CLI flags for output control:
+  - `-no-color` - Disable colored output
+  - `-quiet` / `-q` - Minimal output (errors only)
+  - `-json-output` - Machine-readable JSON output
+  - `-log-level` - Log verbosity: debug, info, warn, error
+- Implemented CI compatibility:
+  - Auto-detects non-TTY environments and disables colors/spinners
+  - Uses `golang.org/x/term` for terminal detection
+- Added config file support for all UI settings:
+  - `no_color`, `quiet`, `json_output`, `log_level` fields in FileConfig
+  - Validation for log_level values
+- Integrated UI into `runIterations()`:
+  - Replaced all `fmt.Printf` calls with UI methods
+  - Added spinner during agent execution
+  - Added summary dashboard at end of run
+- Updated README.md with comprehensive UI documentation
+- All 120+ tests passing (30 UI tests + existing tests)
+
+### Package Structure
+```
+internal/ui/
+├── ui.go      # UI struct, OutputConfig, logging, progress, spinner, summary, table
+└── ui_test.go # Comprehensive tests for all UI functionality
+```
+
+### UI Methods
+- **Logging**: `Debug()`, `Info()`, `Warn()`, `Error()`, `Success()`, `Print()`, `Printf()`
+- **Headers**: `Header()`, `SubHeader()`
+- **Progress**: `NewProgressBar()` with `Update()`, `Increment()`, `SetMessage()`, `Complete()`
+- **Spinner**: `NewSpinner()` with `Start()`, `Stop()`, `SetMessage()`
+- **Summary**: `PrintSummary()` with Summary struct
+- **Table**: `NewTable()` with `AddRow()`, `Render()`
+- **Helpers**: `StatusLine()`, `ClearLine()`, `IsTTY()`, `IsQuiet()`, `IsJSONOutput()`
+
+### Configuration Options
+```yaml
+# .ralph.yaml
+no_color: false      # Disable colored output
+quiet: false         # Minimal output mode
+json_output: false   # JSON output for automation
+log_level: info      # Log level: debug, info, warn, error
+```
+
+### Notes for Next Developer
+- UI auto-disables colors for non-TTY writers (pipes, files, CI without proper terminal)
+- Spinner and progress bar are only rendered on TTY - they no-op otherwise
+- JSON output mode emits newline-delimited JSON for easy parsing
+- Log levels filter what gets printed: debug shows all, error shows only errors
+- Summary struct tracks metrics: features completed/failed/skipped, iterations, duration
+- The UI instance is created once in `runIterations()` and passed to helper functions
+- Progress bar includes ETA calculation based on elapsed time per iteration
+- Table output auto-calculates column widths based on content
+- Consider adding `-progress` flag to show progress bar during iterations in future

@@ -368,3 +368,16 @@ func (rm *RecoveryManager) GetFailureSummary() string {
 func (rm *RecoveryManager) ShouldEscalate(featureID int) bool {
 	return !rm.tracker.CanRetry(featureID)
 }
+
+// GetRecoveredCount returns the number of failures that were successfully recovered from
+func (rm *RecoveryManager) GetRecoveredCount() int {
+	// Count retries that were attempted (indicates recovery attempts)
+	recovered := 0
+	for featureID := range rm.tracker.failures {
+		count := rm.tracker.GetRetryCount(featureID)
+		if count > 0 {
+			recovered += count
+		}
+	}
+	return recovered
+}

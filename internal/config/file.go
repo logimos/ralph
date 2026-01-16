@@ -47,6 +47,12 @@ type FileConfig struct {
 
 	// Environment settings
 	Environment string `json:"environment,omitempty" yaml:"environment,omitempty"`
+
+	// UI settings
+	NoColor    bool   `json:"no_color,omitempty" yaml:"no_color,omitempty"`
+	Quiet      bool   `json:"quiet,omitempty" yaml:"quiet,omitempty"`
+	JSONOutput bool   `json:"json_output,omitempty" yaml:"json_output,omitempty"`
+	LogLevel   string `json:"log_level,omitempty" yaml:"log_level,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -186,6 +192,20 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return fmt.Errorf("invalid environment %q: must be one of local, github-actions, gitlab-ci, jenkins, circleci, travis-ci, azure-devops, or ci", cfg.Environment)
 	}
 
+	// Validate log level if specified
+	validLogLevels := map[string]bool{
+		"":      true, // empty is valid (use default)
+		"debug": true,
+		"info":  true,
+		"warn":  true,
+		"error": true,
+		"quiet": true,
+	}
+
+	if !validLogLevels[cfg.LogLevel] {
+		return fmt.Errorf("invalid log_level %q: must be one of debug, info, warn, error, or quiet", cfg.LogLevel)
+	}
+
 	return nil
 }
 
@@ -239,5 +259,19 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	// Apply environment setting
 	if fileCfg.Environment != "" && cfg.Environment == "" {
 		cfg.Environment = fileCfg.Environment
+	}
+
+	// Apply UI settings
+	if fileCfg.NoColor && !cfg.NoColor {
+		cfg.NoColor = fileCfg.NoColor
+	}
+	if fileCfg.Quiet && !cfg.Quiet {
+		cfg.Quiet = fileCfg.Quiet
+	}
+	if fileCfg.JSONOutput && !cfg.JSONOutput {
+		cfg.JSONOutput = fileCfg.JSONOutput
+	}
+	if fileCfg.LogLevel != "" && cfg.LogLevel == DefaultLogLevel {
+		cfg.LogLevel = fileCfg.LogLevel
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
+	"github.com/logimos/ralph/internal/ui"
 )
 
 var (
@@ -95,6 +96,12 @@ func parseFlags() *config.Config {
 	flag.IntVar(&cfg.MaxRetries, "max-retries", config.DefaultMaxRetries, "Maximum retries per feature before escalation (default: 3)")
 	flag.StringVar(&cfg.RecoveryStrategy, "recovery-strategy", config.DefaultRecoveryStrategy, "Recovery strategy: retry, skip, rollback (default: retry)")
 	flag.StringVar(&cfg.Environment, "environment", "", "Override detected environment (local, github-actions, gitlab-ci, jenkins, circleci, ci)")
+	// UI-related flags
+	flag.BoolVar(&cfg.NoColor, "no-color", false, "Disable colored output")
+	flag.BoolVar(&cfg.Quiet, "quiet", false, "Minimal output (errors only)")
+	flag.BoolVar(&cfg.Quiet, "q", false, "Minimal output (shorthand for -quiet)")
+	flag.BoolVar(&cfg.JSONOutput, "json-output", false, "Machine-readable JSON output")
+	flag.StringVar(&cfg.LogLevel, "log-level", config.DefaultLogLevel, "Log level: debug, info, warn, error")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -146,6 +153,11 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    github-actions, gitlab-ci, jenkins, circleci, travis-ci, azure-devops\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Override with -environment flag or config file.\n")
+		fmt.Fprintf(os.Stderr, "\nOutput Options:\n")
+		fmt.Fprintf(os.Stderr, "  -no-color      Disable colored output (auto-disabled in non-TTY)\n")
+		fmt.Fprintf(os.Stderr, "  -quiet, -q     Minimal output (errors only)\n")
+		fmt.Fprintf(os.Stderr, "  -json-output   Machine-readable JSON output\n")
+		fmt.Fprintf(os.Stderr, "  -log-level     Log verbosity: debug, info, warn, error (default: info)\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -252,6 +264,19 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.Environment != "" && !explicitFlags["environment"] {
 		cfg.Environment = fileCfg.Environment
 	}
+	// UI settings
+	if fileCfg.NoColor && !explicitFlags["no-color"] {
+		cfg.NoColor = fileCfg.NoColor
+	}
+	if fileCfg.Quiet && !explicitFlags["quiet"] && !explicitFlags["q"] {
+		cfg.Quiet = fileCfg.Quiet
+	}
+	if fileCfg.JSONOutput && !explicitFlags["json-output"] {
+		cfg.JSONOutput = fileCfg.JSONOutput
+	}
+	if fileCfg.LogLevel != "" && !explicitFlags["log-level"] {
+		cfg.LogLevel = fileCfg.LogLevel
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -309,6 +334,18 @@ func validateConfig(cfg *config.Config) error {
 }
 
 func runIterations(cfg *config.Config) error {
+	// Create UI instance
+	uiCfg := ui.OutputConfig{
+		NoColor:    cfg.NoColor,
+		Quiet:      cfg.Quiet,
+		JSONOutput: cfg.JSONOutput,
+		LogLevel:   ui.ParseLogLevel(cfg.LogLevel),
+	}
+	output := ui.New(uiCfg)
+
+	// Start timing for summary
+	startTime := time.Now()
+
 	// Detect environment
 	var envProfile *environment.EnvironmentProfile
 	if cfg.Environment != "" {
@@ -323,33 +360,52 @@ func runIterations(cfg *config.Config) error {
 		cfg.Verbose = true
 	}
 
-	fmt.Printf("Starting iterative development workflow\n")
-	fmt.Printf("Plan file: %s\n", cfg.PlanFile)
-	fmt.Printf("Progress file: %s\n", cfg.ProgressFile)
-	fmt.Printf("Iterations: %d\n", cfg.Iterations)
-	fmt.Printf("Agent command: %s\n", cfg.AgentCmd)
-	fmt.Printf("Recovery strategy: %s (max %d retries)\n", cfg.RecoveryStrategy, cfg.MaxRetries)
-	if cfg.Verbose {
-		fmt.Printf("Type check command: %s\n", cfg.TypeCheckCmd)
-		fmt.Printf("Test command: %s\n", cfg.TestCmd)
-		fmt.Println()
-		fmt.Println(envProfile.Summary())
+	// Auto-disable colors in CI if not explicitly set
+	if envProfile.CIEnvironment && !cfg.NoColor {
+		// Keep colors in CI for modern terminals that support it
 	}
-	fmt.Println()
+
+	output.Header("Ralph - Iterative Development Workflow")
+	output.Info("Plan file: %s", cfg.PlanFile)
+	output.Info("Progress file: %s", cfg.ProgressFile)
+	output.Info("Iterations: %d", cfg.Iterations)
+	output.Info("Agent command: %s", cfg.AgentCmd)
+	output.Info("Recovery strategy: %s (max %d retries)", cfg.RecoveryStrategy, cfg.MaxRetries)
+	
+	if cfg.Verbose {
+		output.Debug("Type check command: %s", cfg.TypeCheckCmd)
+		output.Debug("Test command: %s", cfg.TestCmd)
+		output.Print("")
+		output.Print("%s", envProfile.Summary())
+	}
+	output.Print("")
 
 	// Initialize recovery manager
 	strategyType, _ := recovery.ParseStrategyType(cfg.RecoveryStrategy)
 	recoveryMgr := recovery.NewRecoveryManager(cfg.MaxRetries, strategyType)
+
+	// Track metrics for summary
+	var summary ui.Summary
+	summary.TotalIterations = cfg.Iterations
+	summary.StartTime = startTime
 
 	// Track the current feature being worked on (extracted from output if possible)
 	currentFeatureID := 0
 	var additionalPromptGuidance string
 
 	for i := 1; i <= cfg.Iterations; i++ {
-		fmt.Printf("=== Iteration %d/%d ===\n", i, cfg.Iterations)
+		output.Header("Iteration %d/%d", i, cfg.Iterations)
+		summary.IterationsRun = i
 
 		if cfg.Verbose {
-			fmt.Printf("Executing agent command...\n")
+			output.Debug("Executing agent command...")
+		}
+
+		// Show spinner for agent execution if TTY
+		var spinner *ui.Spinner
+		if output.IsTTY() && !cfg.Quiet && !cfg.JSONOutput {
+			spinner = output.NewSpinner("Executing agent...")
+			spinner.Start()
 		}
 
 		// Build the prompt for the AI agent, including any recovery guidance
@@ -360,12 +416,17 @@ func runIterations(cfg *config.Config) error {
 		}
 
 		if cfg.Verbose {
-			fmt.Printf("Prompt: %s\n", iterPrompt)
+			output.Debug("Prompt: %s", iterPrompt)
 		}
 
 		// Execute the AI agent CLI tool
 		result, err := agent.Execute(cfg, iterPrompt)
 		
+		// Stop spinner
+		if spinner != nil {
+			spinner.Stop()
+		}
+
 		// Determine exit code for failure detection
 		exitCode := 0
 		if err != nil {
@@ -375,13 +436,17 @@ func runIterations(cfg *config.Config) error {
 
 		// Print the agent output
 		if result != "" {
-			fmt.Println(result)
+			output.Print("%s", result)
 		}
 
 		// Check for completion signal (even if there was an error, the output might contain it)
 		if strings.Contains(result, prompt.CompleteSignal) {
-			fmt.Printf("\n✓ Plan complete! Detected completion signal after %d iteration(s).\n", i)
-			printRecoverySummary(recoveryMgr, cfg.Verbose)
+			output.Success("Plan complete! Detected completion signal after %d iteration(s).", i)
+			summary.FeaturesCompleted++
+			summary.EndTime = time.Now()
+			summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
+			output.PrintSummary(summary)
+			printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
 			return nil
 		}
 
@@ -394,16 +459,18 @@ func runIterations(cfg *config.Config) error {
 			failure, recoveryResult := recoveryMgr.HandleFailure(result, exitCode, currentFeatureID, i)
 			
 			if failure != nil {
-				fmt.Printf("\n⚠ Failure detected: %s\n", failure)
+				output.Warn("Failure detected: %s", failure)
+				summary.Errors = append(summary.Errors, failure.String())
 				
 				// Log failure to progress file
 				logFailureToProgress(cfg.ProgressFile, failure)
 
 				if recoveryResult.ShouldSkip {
-					fmt.Printf("→ Recovery: %s\n", recoveryResult.Message)
+					output.Info("Recovery: %s", recoveryResult.Message)
+					summary.FeaturesSkipped++
 					// Continue to next iteration (which will work on next feature)
 				} else if recoveryResult.ShouldRetry {
-					fmt.Printf("→ Recovery: %s\n", recoveryResult.Message)
+					output.Info("Recovery: %s", recoveryResult.Message)
 					// Set additional guidance for the retry
 					if recoveryResult.ModifiedPrompt != "" {
 						additionalPromptGuidance = recoveryResult.ModifiedPrompt
@@ -411,19 +478,28 @@ func runIterations(cfg *config.Config) error {
 				}
 
 				if !recoveryResult.Success {
-					fmt.Printf("→ Recovery action failed: %s\n", recoveryResult.Message)
+					output.Error("Recovery action failed: %s", recoveryResult.Message)
+					summary.FeaturesFailed++
 				}
 			} else if err != nil {
 				// Agent execution error but no specific failure detected
-				fmt.Printf("\n⚠ Agent execution error: %v\n", err)
+				output.Error("Agent execution error: %v", err)
+				summary.Errors = append(summary.Errors, err.Error())
 			}
+		} else {
+			// Iteration completed without obvious failures
+			// This doesn't necessarily mean a feature was completed,
+			// but for tracking purposes we count successful iterations
 		}
 
-		fmt.Println() // Empty line between iterations
+		output.Print("") // Empty line between iterations
 	}
 
-	fmt.Printf("Completed %d iteration(s) without completion signal.\n", cfg.Iterations)
-	printRecoverySummary(recoveryMgr, cfg.Verbose)
+	output.Info("Completed %d iteration(s) without completion signal.", cfg.Iterations)
+	summary.EndTime = time.Now()
+	summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
+	output.PrintSummary(summary)
+	printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
 	return nil
 }
 
@@ -458,7 +534,7 @@ func logFailureToProgress(progressFile string, failure *recovery.Failure) {
 	}
 }
 
-// printRecoverySummary prints a summary of failures and recovery actions
+// printRecoverySummary prints a summary of failures and recovery actions (legacy function)
 func printRecoverySummary(rm *recovery.RecoveryManager, verbose bool) {
 	summary := rm.GetFailureSummary()
 	if summary != "No failures recorded" {
@@ -468,6 +544,18 @@ func printRecoverySummary(rm *recovery.RecoveryManager, verbose bool) {
 	} else if verbose {
 		fmt.Println()
 		fmt.Println("No failures encountered during execution.")
+	}
+}
+
+// printRecoverySummaryUI prints a summary using the UI package
+func printRecoverySummaryUI(output *ui.UI, rm *recovery.RecoveryManager, verbose bool) {
+	summary := rm.GetFailureSummary()
+	if summary != "No failures recorded" {
+		output.SubHeader("Recovery Summary")
+		output.Print("%s", summary)
+	} else if verbose {
+		output.Print("")
+		output.Success("No failures encountered during execution.")
 	}
 }
 

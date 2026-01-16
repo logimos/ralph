@@ -12,6 +12,8 @@ const (
 	DefaultMaxRetries = 3
 	// DefaultRecoveryStrategy is the default recovery strategy
 	DefaultRecoveryStrategy = "retry"
+	// DefaultLogLevel is the default logging level
+	DefaultLogLevel = "info"
 )
 
 // Config holds the application configuration
@@ -35,6 +37,11 @@ type Config struct {
 	MaxRetries       int    // Maximum retries per feature before recovery escalation
 	RecoveryStrategy string // Recovery strategy: retry, skip, rollback
 	Environment      string // Environment override (local, github-actions, gitlab-ci, etc.)
+	// UI-related configuration
+	NoColor    bool   // Disable colored output
+	Quiet      bool   // Minimal output (errors only)
+	JSONOutput bool   // Machine-readable JSON output
+	LogLevel   string // Log level: debug, info, warn, error
 }
 
 // New creates a new Config with default values
@@ -46,5 +53,6 @@ func New() *Config {
 		OutputPlanFile:   DefaultPlanFile,
 		MaxRetries:       DefaultMaxRetries,
 		RecoveryStrategy: DefaultRecoveryStrategy,
+		LogLevel:         DefaultLogLevel,
 	}
 }

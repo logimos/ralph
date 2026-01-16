@@ -138,12 +138,18 @@ Options:
         Generate plan.json from notes file
   -iterations int
         Number of iterations to run (required)
+  -json-output
+        Machine-readable JSON output for automation
   -list-tested
         List only tested features
   -list-untested
         List only untested features
+  -log-level string
+        Log verbosity: debug, info, warn, error (default "info")
   -max-retries int
         Maximum retries per feature before escalation (default: 3)
+  -no-color
+        Disable colored output (auto-disabled in non-TTY)
   -notes string
         Path to notes file (required with -generate-plan)
   -output string
@@ -152,6 +158,8 @@ Options:
         Path to the plan file (e.g., plan.json) (default "plan.json")
   -progress string
         Path to the progress file (e.g., progress.txt) (default "progress.txt")
+  -quiet, -q
+        Minimal output (errors only)
   -recovery-strategy string
         Recovery strategy: retry, skip, rollback (default: retry)
   -status
@@ -164,6 +172,26 @@ Options:
         Enable verbose output
   -version
         Show version information and exit
+```
+
+### Output Options
+
+Control how Ralph displays information:
+
+```bash
+# Minimal output (errors only)
+ralph -iterations 5 -quiet
+
+# Machine-readable JSON output
+ralph -iterations 5 -json-output
+
+# Disable colored output
+ralph -iterations 5 -no-color
+
+# Set log verbosity level
+ralph -iterations 5 -log-level debug   # Show all messages
+ralph -iterations 5 -log-level warn    # Only warnings and errors
+ralph -iterations 5 -log-level error   # Only errors
 ```
 
 ### Build System Support
@@ -482,6 +510,87 @@ Environment: Local development
   Recommended timeout: 1m0s
   Parallel hint: 7 workers
 ```
+
+## Enhanced CLI Output
+
+Ralph provides rich CLI output with colors, progress indicators, and structured logging for better visibility into the development workflow.
+
+### Features
+
+- **Colored Output**: Success (green), errors (red), warnings (yellow), info (blue)
+- **Progress Spinner**: Visual feedback during long-running agent executions
+- **Summary Dashboard**: End-of-run summary showing completed features, failures, and timing
+- **Structured Logging**: Log levels for controlling output verbosity
+- **JSON Output**: Machine-readable output for automation and CI integration
+
+### Output Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| Normal | Colored output with symbols | Interactive terminal use |
+| Quiet (`-quiet`) | Errors only | Scripting, background jobs |
+| JSON (`-json-output`) | Structured JSON lines | CI/CD pipelines, log aggregation |
+| No Color (`-no-color`) | Plain text | Non-TTY environments, legacy terminals |
+
+### Log Levels
+
+Control output verbosity with `-log-level`:
+
+| Level | Shows |
+|-------|-------|
+| `debug` | All messages including detailed debugging info |
+| `info` (default) | Standard progress and informational messages |
+| `warn` | Only warnings and errors |
+| `error` | Only error messages |
+
+### Summary Dashboard
+
+At the end of each run, Ralph displays a summary:
+
+```
+=== Execution Summary ===
+┌───────────────────────────────────────────┐
+│ Progress:              8/10 iterations    │
+│ Features completed:                   5   │
+│ Features failed:                      1   │
+│ Features skipped:                     2   │
+│ Failures recovered:                   3   │
+│ Duration:                         2m30s   │
+└───────────────────────────────────────────┘
+```
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# Quiet mode for scripts
+ralph -iterations 10 -quiet
+
+# JSON output for CI pipelines
+ralph -iterations 10 -json-output
+
+# Disable colors for legacy terminals
+ralph -iterations 10 -no-color
+
+# Debug level logging
+ralph -iterations 10 -log-level debug -verbose
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+no_color: false
+quiet: false
+json_output: false
+log_level: info
+```
+
+### CI Compatibility
+
+Ralph automatically detects non-TTY environments and adjusts output:
+- Disables colors when output is not a terminal
+- Disables spinners and progress bars in non-interactive mode
+- Enables verbose output by default in CI environments
 
 ## Plan File Format
 

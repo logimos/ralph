@@ -1,5 +1,11 @@
 module github.com/logimos/ralph
 
-go 1.24
+go 1.24.0
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+toolchain go1.24.3
+
+require (
+	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/term v0.39.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
