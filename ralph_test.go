@@ -6,6 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/logimos/ralph/internal/agent"
+	"github.com/logimos/ralph/internal/config"
+	"github.com/logimos/ralph/internal/detection"
+	"github.com/logimos/ralph/internal/plan"
+	"github.com/logimos/ralph/internal/prompt"
 )
 
 // TestDetectBuildSystem tests build system detection based on project files
@@ -122,9 +128,9 @@ func TestDetectBuildSystem(t *testing.T) {
 			defer os.Chdir(originalDir)
 
 			// Test detection
-			result := detectBuildSystem()
+			result := detection.DetectBuildSystem()
 			if result != tt.expectedSystem {
-				t.Errorf("detectBuildSystem() = %q, want %q", result, tt.expectedSystem)
+				t.Errorf("DetectBuildSystem() = %q, want %q", result, tt.expectedSystem)
 			}
 		})
 	}
@@ -133,14 +139,14 @@ func TestDetectBuildSystem(t *testing.T) {
 // TestApplyBuildSystemConfig tests build system configuration application
 func TestApplyBuildSystemConfig(t *testing.T) {
 	tests := []struct {
-		name             string
-		config           Config
-		expectedTypeCmd  string
-		expectedTestCmd  string
+		name            string
+		cfg             config.Config
+		expectedTypeCmd string
+		expectedTestCmd string
 	}{
 		{
 			name: "Explicit commands not overridden",
-			config: Config{
+			cfg: config.Config{
 				TypeCheckCmd: "custom typecheck",
 				TestCmd:      "custom test",
 				BuildSystem:  "go",
@@ -150,7 +156,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "pnpm preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "pnpm",
 			},
 			expectedTypeCmd: "pnpm typecheck",
@@ -158,7 +164,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "npm preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "npm",
 			},
 			expectedTypeCmd: "npm run typecheck",
@@ -166,7 +172,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "yarn preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "yarn",
 			},
 			expectedTypeCmd: "yarn typecheck",
@@ -174,7 +180,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "gradle preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "gradle",
 			},
 			expectedTypeCmd: "./gradlew check",
@@ -182,7 +188,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "maven preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "maven",
 			},
 			expectedTypeCmd: "mvn compile",
@@ -190,7 +196,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "cargo preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "cargo",
 			},
 			expectedTypeCmd: "cargo check",
@@ -198,7 +204,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "go preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "go",
 			},
 			expectedTypeCmd: "go build ./...",
@@ -206,7 +212,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "python preset applied",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "python",
 			},
 			expectedTypeCmd: "mypy .",
@@ -214,7 +220,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "Unknown build system falls back to pnpm",
-			config: Config{
+			cfg: config.Config{
 				BuildSystem: "unknown-system",
 			},
 			expectedTypeCmd: "pnpm typecheck",
@@ -222,7 +228,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "Partial override - only TypeCheckCmd set",
-			config: Config{
+			cfg: config.Config{
 				TypeCheckCmd: "custom typecheck",
 				BuildSystem:  "go",
 			},
@@ -231,7 +237,7 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 		},
 		{
 			name: "Partial override - only TestCmd set",
-			config: Config{
+			cfg: config.Config{
 				TestCmd:     "custom test",
 				BuildSystem: "go",
 			},
@@ -242,14 +248,14 @@ func TestApplyBuildSystemConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := tt.config
-			applyBuildSystemConfig(&config)
+			cfg := tt.cfg
+			detection.ApplyBuildSystemConfig(&cfg)
 
-			if config.TypeCheckCmd != tt.expectedTypeCmd {
-				t.Errorf("TypeCheckCmd = %q, want %q", config.TypeCheckCmd, tt.expectedTypeCmd)
+			if cfg.TypeCheckCmd != tt.expectedTypeCmd {
+				t.Errorf("TypeCheckCmd = %q, want %q", cfg.TypeCheckCmd, tt.expectedTypeCmd)
 			}
-			if config.TestCmd != tt.expectedTestCmd {
-				t.Errorf("TestCmd = %q, want %q", config.TestCmd, tt.expectedTestCmd)
+			if cfg.TestCmd != tt.expectedTestCmd {
+				t.Errorf("TestCmd = %q, want %q", cfg.TestCmd, tt.expectedTestCmd)
 			}
 		})
 	}
@@ -306,9 +312,9 @@ func TestIsCursorAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isCursorAgent(tt.agentCmd)
+			result := agent.IsCursorAgent(tt.agentCmd)
 			if result != tt.expected {
-				t.Errorf("isCursorAgent(%q) = %v, want %v", tt.agentCmd, result, tt.expected)
+				t.Errorf("IsCursorAgent(%q) = %v, want %v", tt.agentCmd, result, tt.expected)
 			}
 		})
 	}
@@ -316,62 +322,62 @@ func TestIsCursorAgent(t *testing.T) {
 
 // TestBuildPrompt tests prompt construction
 func TestBuildPrompt(t *testing.T) {
-	config := &Config{
+	cfg := &config.Config{
 		PlanFile:     "test-plan.json",
 		ProgressFile: "test-progress.txt",
 		TypeCheckCmd: "go build ./...",
 		TestCmd:      "go test ./...",
 	}
 
-	prompt := buildPrompt(config)
+	p := prompt.BuildIterationPrompt(cfg)
 
 	// Check that prompt contains expected elements
-	if !strings.Contains(prompt, "test-plan.json") {
+	if !strings.Contains(p, "test-plan.json") {
 		t.Error("Prompt should contain plan file path")
 	}
-	if !strings.Contains(prompt, "test-progress.txt") {
+	if !strings.Contains(p, "test-progress.txt") {
 		t.Error("Prompt should contain progress file path")
 	}
-	if !strings.Contains(prompt, "go build ./...") {
+	if !strings.Contains(p, "go build ./...") {
 		t.Error("Prompt should contain typecheck command")
 	}
-	if !strings.Contains(prompt, "go test ./...") {
+	if !strings.Contains(p, "go test ./...") {
 		t.Error("Prompt should contain test command")
 	}
-	if !strings.Contains(prompt, "highest-priority feature") {
+	if !strings.Contains(p, "highest-priority feature") {
 		t.Error("Prompt should mention priority")
 	}
-	if !strings.Contains(prompt, completeSignal) {
+	if !strings.Contains(p, prompt.CompleteSignal) {
 		t.Error("Prompt should contain completion signal")
 	}
-	if !strings.Contains(prompt, "ONLY WORK ON A SINGLE FEATURE") {
+	if !strings.Contains(p, "ONLY WORK ON A SINGLE FEATURE") {
 		t.Error("Prompt should contain single feature instruction")
 	}
 
 	// Check @ references for files
-	if !strings.Contains(prompt, "@") {
+	if !strings.Contains(p, "@") {
 		t.Error("Prompt should use @ references for files")
 	}
 }
 
 // TestBuildPromptAbsolutePaths tests that buildPrompt uses absolute paths
 func TestBuildPromptAbsolutePaths(t *testing.T) {
-	config := &Config{
+	cfg := &config.Config{
 		PlanFile:     "plan.json",
 		ProgressFile: "progress.txt",
 		TypeCheckCmd: "go build ./...",
 		TestCmd:      "go test ./...",
 	}
 
-	prompt := buildPrompt(config)
+	p := prompt.BuildIterationPrompt(cfg)
 
 	// The paths should be converted to absolute paths
 	// Check that the prompt starts with @ and contains a path separator
-	if !strings.Contains(prompt, "@/") && !strings.Contains(prompt, "@\\") {
+	if !strings.Contains(p, "@/") && !strings.Contains(p, "@\\") {
 		// On Windows, the path might use backslashes
 		// If running on a system where we can resolve paths, check for absolute path
 		cwd, _ := os.Getwd()
-		if cwd != "" && !strings.Contains(prompt, cwd) {
+		if cwd != "" && !strings.Contains(p, cwd) {
 			t.Error("Prompt should contain absolute paths")
 		}
 	}
@@ -388,7 +394,7 @@ func TestReadPlanFile(t *testing.T) {
 
 	planFile := filepath.Join(tempDir, "test-plan.json")
 
-	testPlans := []Plan{
+	testPlans := []plan.Plan{
 		{
 			ID:             1,
 			Category:       "feature",
@@ -425,13 +431,13 @@ func TestReadPlanFile(t *testing.T) {
 	}
 
 	// Test reading the plan file
-	plans, err := readPlanFile(planFile)
+	plans, err := plan.ReadFile(planFile)
 	if err != nil {
-		t.Fatalf("readPlanFile() error = %v", err)
+		t.Fatalf("ReadFile() error = %v", err)
 	}
 
 	if len(plans) != 3 {
-		t.Errorf("readPlanFile() returned %d plans, want 3", len(plans))
+		t.Errorf("ReadFile() returned %d plans, want 3", len(plans))
 	}
 
 	// Verify first plan
@@ -448,9 +454,9 @@ func TestReadPlanFile(t *testing.T) {
 
 // TestReadPlanFileNotFound tests error handling for missing plan file
 func TestReadPlanFileNotFound(t *testing.T) {
-	_, err := readPlanFile("/nonexistent/path/plan.json")
+	_, err := plan.ReadFile("/nonexistent/path/plan.json")
 	if err == nil {
-		t.Error("readPlanFile() should return error for nonexistent file")
+		t.Error("ReadFile() should return error for nonexistent file")
 	}
 }
 
@@ -468,15 +474,15 @@ func TestReadPlanFileInvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to write invalid file: %v", err)
 	}
 
-	_, err = readPlanFile(invalidFile)
+	_, err = plan.ReadFile(invalidFile)
 	if err == nil {
-		t.Error("readPlanFile() should return error for invalid JSON")
+		t.Error("ReadFile() should return error for invalid JSON")
 	}
 }
 
 // TestFilterPlans tests filtering plans by tested status
 func TestFilterPlans(t *testing.T) {
-	plans := []Plan{
+	plans := []plan.Plan{
 		{ID: 1, Tested: true},
 		{ID: 2, Tested: false},
 		{ID: 3, Tested: true},
@@ -485,82 +491,82 @@ func TestFilterPlans(t *testing.T) {
 	}
 
 	// Test filtering for tested plans
-	tested := filterPlans(plans, true)
+	tested := plan.Filter(plans, true)
 	if len(tested) != 2 {
-		t.Errorf("filterPlans(true) returned %d plans, want 2", len(tested))
+		t.Errorf("Filter(true) returned %d plans, want 2", len(tested))
 	}
 	for _, p := range tested {
 		if !p.Tested {
-			t.Errorf("filterPlans(true) returned untested plan ID %d", p.ID)
+			t.Errorf("Filter(true) returned untested plan ID %d", p.ID)
 		}
 	}
 
 	// Test filtering for untested plans
-	untested := filterPlans(plans, false)
+	untested := plan.Filter(plans, false)
 	if len(untested) != 3 {
-		t.Errorf("filterPlans(false) returned %d plans, want 3", len(untested))
+		t.Errorf("Filter(false) returned %d plans, want 3", len(untested))
 	}
 	for _, p := range untested {
 		if p.Tested {
-			t.Errorf("filterPlans(false) returned tested plan ID %d", p.ID)
+			t.Errorf("Filter(false) returned tested plan ID %d", p.ID)
 		}
 	}
 }
 
 // TestFilterPlansEmpty tests filtering empty plan list
 func TestFilterPlansEmpty(t *testing.T) {
-	var plans []Plan
+	var plans []plan.Plan
 
-	tested := filterPlans(plans, true)
+	tested := plan.Filter(plans, true)
 	if len(tested) != 0 {
-		t.Errorf("filterPlans(true) on empty list returned %d plans, want 0", len(tested))
+		t.Errorf("Filter(true) on empty list returned %d plans, want 0", len(tested))
 	}
 
-	untested := filterPlans(plans, false)
+	untested := plan.Filter(plans, false)
 	if len(untested) != 0 {
-		t.Errorf("filterPlans(false) on empty list returned %d plans, want 0", len(untested))
+		t.Errorf("Filter(false) on empty list returned %d plans, want 0", len(untested))
 	}
 }
 
 // TestFilterPlansAllTested tests filtering when all plans are tested
 func TestFilterPlansAllTested(t *testing.T) {
-	plans := []Plan{
+	plans := []plan.Plan{
 		{ID: 1, Tested: true},
 		{ID: 2, Tested: true},
 	}
 
-	tested := filterPlans(plans, true)
+	tested := plan.Filter(plans, true)
 	if len(tested) != 2 {
-		t.Errorf("filterPlans(true) returned %d plans, want 2", len(tested))
+		t.Errorf("Filter(true) returned %d plans, want 2", len(tested))
 	}
 
-	untested := filterPlans(plans, false)
+	untested := plan.Filter(plans, false)
 	if len(untested) != 0 {
-		t.Errorf("filterPlans(false) returned %d plans, want 0", len(untested))
+		t.Errorf("Filter(false) returned %d plans, want 0", len(untested))
 	}
 }
 
 // TestFilterPlansAllUntested tests filtering when all plans are untested
 func TestFilterPlansAllUntested(t *testing.T) {
-	plans := []Plan{
+	plans := []plan.Plan{
 		{ID: 1, Tested: false},
 		{ID: 2, Tested: false},
 	}
 
-	tested := filterPlans(plans, true)
+	tested := plan.Filter(plans, true)
 	if len(tested) != 0 {
-		t.Errorf("filterPlans(true) returned %d plans, want 0", len(tested))
+		t.Errorf("Filter(true) returned %d plans, want 0", len(tested))
 	}
 
-	untested := filterPlans(plans, false)
+	untested := plan.Filter(plans, false)
 	if len(untested) != 2 {
-		t.Errorf("filterPlans(false) returned %d plans, want 2", len(untested))
+		t.Errorf("Filter(false) returned %d plans, want 2", len(untested))
 	}
 }
 
 // TestPlanStructJSON tests Plan struct JSON serialization
 func TestPlanStructJSON(t *testing.T) {
-	plan := Plan{
+	p := plan.Plan{
 		ID:             1,
 		Category:       "feature",
 		Description:    "Test description",
@@ -570,35 +576,35 @@ func TestPlanStructJSON(t *testing.T) {
 	}
 
 	// Serialize to JSON
-	data, err := json.Marshal(plan)
+	data, err := json.Marshal(p)
 	if err != nil {
 		t.Fatalf("Failed to marshal Plan: %v", err)
 	}
 
 	// Deserialize back
-	var decoded Plan
+	var decoded plan.Plan
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Failed to unmarshal Plan: %v", err)
 	}
 
 	// Verify fields
-	if decoded.ID != plan.ID {
-		t.Errorf("ID mismatch: got %d, want %d", decoded.ID, plan.ID)
+	if decoded.ID != p.ID {
+		t.Errorf("ID mismatch: got %d, want %d", decoded.ID, p.ID)
 	}
-	if decoded.Category != plan.Category {
-		t.Errorf("Category mismatch: got %q, want %q", decoded.Category, plan.Category)
+	if decoded.Category != p.Category {
+		t.Errorf("Category mismatch: got %q, want %q", decoded.Category, p.Category)
 	}
-	if decoded.Description != plan.Description {
-		t.Errorf("Description mismatch: got %q, want %q", decoded.Description, plan.Description)
+	if decoded.Description != p.Description {
+		t.Errorf("Description mismatch: got %q, want %q", decoded.Description, p.Description)
 	}
-	if len(decoded.Steps) != len(plan.Steps) {
-		t.Errorf("Steps length mismatch: got %d, want %d", len(decoded.Steps), len(plan.Steps))
+	if len(decoded.Steps) != len(p.Steps) {
+		t.Errorf("Steps length mismatch: got %d, want %d", len(decoded.Steps), len(p.Steps))
 	}
-	if decoded.ExpectedOutput != plan.ExpectedOutput {
-		t.Errorf("ExpectedOutput mismatch: got %q, want %q", decoded.ExpectedOutput, plan.ExpectedOutput)
+	if decoded.ExpectedOutput != p.ExpectedOutput {
+		t.Errorf("ExpectedOutput mismatch: got %q, want %q", decoded.ExpectedOutput, p.ExpectedOutput)
 	}
-	if decoded.Tested != plan.Tested {
-		t.Errorf("Tested mismatch: got %v, want %v", decoded.Tested, plan.Tested)
+	if decoded.Tested != p.Tested {
+		t.Errorf("Tested mismatch: got %v, want %v", decoded.Tested, p.Tested)
 	}
 }
 
@@ -607,7 +613,7 @@ func TestBuildSystemPresetsExist(t *testing.T) {
 	expectedSystems := []string{"pnpm", "npm", "yarn", "gradle", "maven", "cargo", "go", "python"}
 
 	for _, system := range expectedSystems {
-		preset, exists := BuildSystemPresets[system]
+		preset, exists := detection.BuildSystemPresets[system]
 		if !exists {
 			t.Errorf("BuildSystemPresets missing preset for %q", system)
 			continue
@@ -623,20 +629,38 @@ func TestBuildSystemPresetsExist(t *testing.T) {
 
 // TestConfigStructDefaults tests Config struct initialization
 func TestConfigStructDefaults(t *testing.T) {
-	config := &Config{}
+	cfg := &config.Config{}
 
 	// Verify zero values
-	if config.Iterations != 0 {
-		t.Errorf("Default Iterations = %d, want 0", config.Iterations)
+	if cfg.Iterations != 0 {
+		t.Errorf("Default Iterations = %d, want 0", cfg.Iterations)
 	}
-	if config.Verbose {
+	if cfg.Verbose {
 		t.Error("Default Verbose should be false")
 	}
-	if config.ShowVersion {
+	if cfg.ShowVersion {
 		t.Error("Default ShowVersion should be false")
 	}
-	if config.ListStatus {
+	if cfg.ListStatus {
 		t.Error("Default ListStatus should be false")
+	}
+}
+
+// TestConfigNew tests config.New() factory function
+func TestConfigNew(t *testing.T) {
+	cfg := config.New()
+
+	if cfg.PlanFile != config.DefaultPlanFile {
+		t.Errorf("PlanFile = %q, want %q", cfg.PlanFile, config.DefaultPlanFile)
+	}
+	if cfg.ProgressFile != config.DefaultProgressFile {
+		t.Errorf("ProgressFile = %q, want %q", cfg.ProgressFile, config.DefaultProgressFile)
+	}
+	if cfg.AgentCmd != config.DefaultAgentCmd {
+		t.Errorf("AgentCmd = %q, want %q", cfg.AgentCmd, config.DefaultAgentCmd)
+	}
+	if cfg.OutputPlanFile != config.DefaultPlanFile {
+		t.Errorf("OutputPlanFile = %q, want %q", cfg.OutputPlanFile, config.DefaultPlanFile)
 	}
 }
 
@@ -726,21 +750,53 @@ func TestExtractAndWritePlan(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testFile := filepath.Join(tempDir, tt.name+".json")
-			err := extractAndWritePlan(tt.input, testFile)
+			err := plan.ExtractAndWrite(tt.input, testFile)
 
 			if tt.shouldSucceed {
 				if err != nil {
-					t.Errorf("extractAndWritePlan() error = %v, want success", err)
+					t.Errorf("ExtractAndWrite() error = %v, want success", err)
 				}
 				// Verify file was created and is valid JSON
 				if _, err := os.Stat(testFile); os.IsNotExist(err) {
-					t.Error("extractAndWritePlan() should create output file")
+					t.Error("ExtractAndWrite() should create output file")
 				}
 			} else {
 				if err == nil {
-					t.Error("extractAndWritePlan() should return error for invalid input")
+					t.Error("ExtractAndWrite() should return error for invalid input")
 				}
 			}
 		})
+	}
+}
+
+// TestCompleteSignalConstant verifies the complete signal constant
+func TestCompleteSignalConstant(t *testing.T) {
+	expected := "<promise>COMPLETE</promise>"
+	if prompt.CompleteSignal != expected {
+		t.Errorf("CompleteSignal = %q, want %q", prompt.CompleteSignal, expected)
+	}
+}
+
+// TestBuildPlanGenerationPrompt tests the plan generation prompt builder
+func TestBuildPlanGenerationPrompt(t *testing.T) {
+	notesPath := "/path/to/notes.md"
+	outputPath := "/path/to/plan.json"
+
+	p := prompt.BuildPlanGenerationPrompt(notesPath, outputPath)
+
+	if !strings.Contains(p, notesPath) {
+		t.Error("Prompt should contain notes path")
+	}
+	if !strings.Contains(p, outputPath) {
+		t.Error("Prompt should contain output path")
+	}
+	if !strings.Contains(p, "JSON") {
+		t.Error("Prompt should mention JSON format")
+	}
+	if !strings.Contains(p, "category") {
+		t.Error("Prompt should mention category field")
+	}
+	if !strings.Contains(p, "steps") {
+		t.Error("Prompt should mention steps field")
 	}
 }

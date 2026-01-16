@@ -27,3 +27,43 @@
 - Tests for `detectBuildSystem()` change directories during execution, so they restore the original dir after each test
 - Integration tests for `executeAgent()` and `runIterations()` would require mocking external commands
 - Consider adding table-driven tests for `validateConfig()` in future iterations
+
+## 2026-01-16: Modular Package Refactoring (Feature #2)
+
+### Completed
+- Refactored codebase into modular `internal/` package structure:
+  - `internal/config` - Config struct and constants (DefaultPlanFile, DefaultProgressFile, DefaultAgentCmd)
+  - `internal/detection` - Build system detection and presets (DetectBuildSystem, ApplyBuildSystemConfig, BuildSystemPresets)
+  - `internal/plan` - Plan file operations (Plan struct, ReadFile, Filter, Print, ExtractAndWrite)
+  - `internal/agent` - Agent execution (IsCursorAgent, Execute)
+  - `internal/prompt` - Prompt building (CompleteSignal, BuildIterationPrompt, BuildPlanGenerationPrompt)
+- Updated main `ralph.go` to import and use internal packages
+- Updated all tests to use the new package structure
+- All 24 tests passing, build successful
+
+### Package Structure
+```
+ralph/
+├── ralph.go              # Main entry point, CLI parsing, orchestration
+├── ralph_test.go         # Tests (use internal packages)
+└── internal/
+    ├── config/
+    │   └── config.go     # Config struct, defaults
+    ├── detection/
+    │   └── detection.go  # Build system detection, presets
+    ├── plan/
+    │   └── plan.go       # Plan struct, file operations
+    ├── agent/
+    │   └── agent.go      # Agent execution
+    └── prompt/
+        └── prompt.go     # Prompt construction
+```
+
+### Notes for Next Developer
+- The internal packages are designed to be independent with minimal cross-dependencies
+- Only `detection` imports `config` (for ApplyBuildSystemConfig)
+- Only `agent` imports `config` (for Execute function)
+- Only `prompt` imports `config` (for BuildIterationPrompt)
+- The main package orchestrates all internal packages
+- Consider adding package-level tests in each internal package for better isolation
+- Future features should follow the package-per-concern pattern established here

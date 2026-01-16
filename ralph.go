@@ -1,15 +1,19 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/logimos/ralph/internal/agent"
+	"github.com/logimos/ralph/internal/config"
+	"github.com/logimos/ralph/internal/detection"
+	"github.com/logimos/ralph/internal/plan"
+	"github.com/logimos/ralph/internal/prompt"
 )
 
 var (
@@ -17,209 +21,22 @@ var (
 	Version = "dev"
 )
 
-const (
-	completeSignal      = "<promise>COMPLETE</promise>"
-	defaultPlanFile     = "plan.json"
-	defaultProgressFile = "progress.txt"
-)
-
-// detectBuildSystem attempts to detect the build system from project files
-func detectBuildSystem() string {
-	// Check for Gradle
-	if _, err := os.Stat("build.gradle"); err == nil {
-		return "gradle"
-	}
-	if _, err := os.Stat("build.gradle.kts"); err == nil {
-		return "gradle"
-	}
-	if _, err := os.Stat("gradlew"); err == nil {
-		return "gradle"
-	}
-
-	// Check for Maven
-	if _, err := os.Stat("pom.xml"); err == nil {
-		return "maven"
-	}
-
-	// Check for Cargo (Rust)
-	if _, err := os.Stat("Cargo.toml"); err == nil {
-		return "cargo"
-	}
-
-	// Check for Go modules
-	if _, err := os.Stat("go.mod"); err == nil {
-		return "go"
-	}
-
-	// Check for Python (common indicators)
-	if _, err := os.Stat("setup.py"); err == nil {
-		return "python"
-	}
-	if _, err := os.Stat("pyproject.toml"); err == nil {
-		return "python"
-	}
-	if _, err := os.Stat("requirements.txt"); err == nil {
-		return "python"
-	}
-
-	// Check for pnpm (has pnpm-lock.yaml)
-	if _, err := os.Stat("pnpm-lock.yaml"); err == nil {
-		return "pnpm"
-	}
-
-	// Check for yarn (has yarn.lock)
-	if _, err := os.Stat("yarn.lock"); err == nil {
-		return "yarn"
-	}
-
-	// Check for npm (has package.json, but no lock file means npm)
-	if _, err := os.Stat("package.json"); err == nil {
-		return "npm"
-	}
-
-	// Default to pnpm for backward compatibility
-	return "pnpm"
-}
-
-// applyBuildSystemConfig applies build system presets or auto-detection
-func applyBuildSystemConfig(config *Config) {
-	// If both typecheck and test are explicitly set, don't override
-	if config.TypeCheckCmd != "" && config.TestCmd != "" {
-		return
-	}
-
-	var buildSystem string
-
-	// Determine which build system to use
-	if config.BuildSystem != "" {
-		if config.BuildSystem == "auto" {
-			buildSystem = detectBuildSystem()
-			if config.Verbose {
-				fmt.Printf("Auto-detected build system: %s\n", buildSystem)
-			}
-		} else {
-			buildSystem = config.BuildSystem
-		}
-	} else {
-		// Auto-detect if neither build-system nor individual commands are set
-		if config.TypeCheckCmd == "" && config.TestCmd == "" {
-			buildSystem = detectBuildSystem()
-			if config.Verbose {
-				fmt.Printf("Auto-detected build system: %s\n", buildSystem)
-			}
-		} else {
-			// Use defaults if only one command is set
-			buildSystem = "pnpm"
-		}
-	}
-
-	// Apply preset if available
-	if preset, ok := BuildSystemPresets[buildSystem]; ok {
-		if config.TypeCheckCmd == "" {
-			config.TypeCheckCmd = preset.TypeCheck
-		}
-		if config.TestCmd == "" {
-			config.TestCmd = preset.Test
-		}
-	} else {
-		// Unknown build system, use defaults
-		if config.TypeCheckCmd == "" {
-			config.TypeCheckCmd = BuildSystemPresets["pnpm"].TypeCheck
-		}
-		if config.TestCmd == "" {
-			config.TestCmd = BuildSystemPresets["pnpm"].Test
-		}
-		if config.Verbose {
-			fmt.Printf("Warning: Unknown build system '%s', using pnpm defaults\n", buildSystem)
-		}
-	}
-}
-
-// Config holds the application configuration
-type Config struct {
-	PlanFile       string
-	ProgressFile   string
-	Iterations     int
-	AgentCmd       string
-	TypeCheckCmd   string
-	TestCmd        string
-	BuildSystem    string
-	Verbose        bool
-	ShowVersion    bool
-	ListStatus     bool
-	ListTested     bool
-	ListUntested   bool
-	GeneratePlan   bool
-	NotesFile      string
-	OutputPlanFile string
-}
-
-// BuildSystemPresets defines commands for common build systems
-var BuildSystemPresets = map[string]struct {
-	TypeCheck string
-	Test      string
-}{
-	"pnpm": {
-		TypeCheck: "pnpm typecheck",
-		Test:      "pnpm test",
-	},
-	"npm": {
-		TypeCheck: "npm run typecheck",
-		Test:      "npm test",
-	},
-	"yarn": {
-		TypeCheck: "yarn typecheck",
-		Test:      "yarn test",
-	},
-	"gradle": {
-		TypeCheck: "./gradlew check",
-		Test:      "./gradlew test",
-	},
-	"maven": {
-		TypeCheck: "mvn compile",
-		Test:      "mvn test",
-	},
-	"cargo": {
-		TypeCheck: "cargo check",
-		Test:      "cargo test",
-	},
-	"go": {
-		TypeCheck: "go build ./...",
-		Test:      "go test ./...",
-	},
-	"python": {
-		TypeCheck: "mypy .",
-		Test:      "pytest",
-	},
-}
-
-// Plan represents the structure of a plan file
-type Plan struct {
-	ID             int      `json:"id"`
-	Category       string   `json:"category,omitempty"`
-	Command        string   `json:"command,omitempty"`
-	Description    string   `json:"description"`
-	Steps          []string `json:"steps,omitempty"`
-	ExpectedOutput string   `json:"expected_output,omitempty"`
-	Tested         bool     `json:"tested,omitempty"`
-}
-
 func main() {
-	config := parseFlags()
+	cfg := parseFlags()
 
 	// Handle version command (exit early)
-	if config.ShowVersion {
+	if cfg.ShowVersion {
 		fmt.Printf("ralph version %s\n", Version)
 		os.Exit(0)
 	}
 
 	// Handle generate-plan command
-	if config.GeneratePlan {
-		if err := validateConfig(config); err != nil {
+	if cfg.GeneratePlan {
+		if err := validateConfig(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := generatePlanFromNotes(config); err != nil {
+		if err := generatePlanFromNotes(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -227,52 +44,48 @@ func main() {
 	}
 
 	// Handle list commands (don't require iterations)
-	if config.ListStatus || config.ListTested || config.ListUntested {
-		if err := validateConfig(config); err != nil {
+	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested {
+		if err := validateConfig(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := listPlanStatus(config); err != nil {
+		if err := listPlanStatus(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
-	if err := validateConfig(config); err != nil {
+	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := runIterations(config); err != nil {
+	if err := runIterations(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func parseFlags() *Config {
-	config := &Config{
-		AgentCmd:     "cursor-agent",
-		TypeCheckCmd: "pnpm typecheck",
-		TestCmd:      "pnpm test",
-	}
+func parseFlags() *config.Config {
+	cfg := config.New()
 
-	flag.StringVar(&config.PlanFile, "plan", defaultPlanFile, "Path to the plan file (e.g., plan.json)")
-	flag.StringVar(&config.ProgressFile, "progress", defaultProgressFile, "Path to the progress file (e.g., progress.txt)")
-	flag.IntVar(&config.Iterations, "iterations", 0, "Number of iterations to run (required)")
-	flag.StringVar(&config.AgentCmd, "agent", "cursor-agent", "Command name for the AI agent CLI tool")
-	flag.StringVar(&config.BuildSystem, "build-system", "", "Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection")
-	flag.StringVar(&config.TypeCheckCmd, "typecheck", "", "Command to run for type checking (overrides build-system preset)")
-	flag.StringVar(&config.TestCmd, "test", "", "Command to run for testing (overrides build-system preset)")
-	flag.BoolVar(&config.Verbose, "verbose", false, "Enable verbose output")
-	flag.BoolVar(&config.Verbose, "v", false, "Enable verbose output (shorthand)")
-	flag.BoolVar(&config.ShowVersion, "version", false, "Show version information and exit")
-	flag.BoolVar(&config.ListStatus, "status", false, "List plan status (tested and untested features)")
-	flag.BoolVar(&config.ListTested, "list-tested", false, "List only tested features")
-	flag.BoolVar(&config.ListUntested, "list-untested", false, "List only untested features")
-	flag.BoolVar(&config.GeneratePlan, "generate-plan", false, "Generate plan.json from notes file")
-	flag.StringVar(&config.NotesFile, "notes", "", "Path to notes file (required with -generate-plan)")
-	flag.StringVar(&config.OutputPlanFile, "output", defaultPlanFile, "Output plan file path (default: plan.json)")
+	flag.StringVar(&cfg.PlanFile, "plan", config.DefaultPlanFile, "Path to the plan file (e.g., plan.json)")
+	flag.StringVar(&cfg.ProgressFile, "progress", config.DefaultProgressFile, "Path to the progress file (e.g., progress.txt)")
+	flag.IntVar(&cfg.Iterations, "iterations", 0, "Number of iterations to run (required)")
+	flag.StringVar(&cfg.AgentCmd, "agent", config.DefaultAgentCmd, "Command name for the AI agent CLI tool")
+	flag.StringVar(&cfg.BuildSystem, "build-system", "", "Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection")
+	flag.StringVar(&cfg.TypeCheckCmd, "typecheck", "", "Command to run for type checking (overrides build-system preset)")
+	flag.StringVar(&cfg.TestCmd, "test", "", "Command to run for testing (overrides build-system preset)")
+	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose output")
+	flag.BoolVar(&cfg.Verbose, "v", false, "Enable verbose output (shorthand)")
+	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version information and exit")
+	flag.BoolVar(&cfg.ListStatus, "status", false, "List plan status (tested and untested features)")
+	flag.BoolVar(&cfg.ListTested, "list-tested", false, "List only tested features")
+	flag.BoolVar(&cfg.ListUntested, "list-untested", false, "List only untested features")
+	flag.BoolVar(&cfg.GeneratePlan, "generate-plan", false, "Generate plan.json from notes file")
+	flag.StringVar(&cfg.NotesFile, "notes", "", "Path to notes file (required with -generate-plan)")
+	flag.StringVar(&cfg.OutputPlanFile, "output", config.DefaultPlanFile, "Output plan file path (default: plan.json)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -308,18 +121,18 @@ func parseFlags() *Config {
 	flag.Parse()
 
 	// Apply build system configuration
-	applyBuildSystemConfig(config)
+	detection.ApplyBuildSystemConfig(cfg)
 
-	return config
+	return cfg
 }
 
-func validateConfig(config *Config) error {
+func validateConfig(cfg *config.Config) error {
 	// Skip validation for generate-plan (handled separately)
-	if config.GeneratePlan {
-		if config.NotesFile == "" {
+	if cfg.GeneratePlan {
+		if cfg.NotesFile == "" {
 			return fmt.Errorf("notes file is required with -generate-plan (use -notes flag)")
 		}
-		notesPath := strings.TrimSpace(config.NotesFile)
+		notesPath := strings.TrimSpace(cfg.NotesFile)
 		if notesPath == "" {
 			return fmt.Errorf("notes file path cannot be empty")
 		}
@@ -327,57 +140,64 @@ func validateConfig(config *Config) error {
 			return fmt.Errorf("notes file not found: %s", notesPath)
 		}
 		// Check if agent command exists
-		if _, err := exec.LookPath(config.AgentCmd); err != nil {
-			return fmt.Errorf("agent command not found in PATH: %s", config.AgentCmd)
+		if _, err := exec.LookPath(cfg.AgentCmd); err != nil {
+			return fmt.Errorf("agent command not found in PATH: %s", cfg.AgentCmd)
 		}
 		return nil
 	}
 
 	// Skip iteration validation if we're just listing status
-	if config.ListStatus || config.ListTested || config.ListUntested {
-		if _, err := os.Stat(config.PlanFile); os.IsNotExist(err) {
-			return fmt.Errorf("plan file not found: %s", config.PlanFile)
+	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested {
+		if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
+			return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
 		}
 		return nil
 	}
 
-	if config.Iterations <= 0 {
+	if cfg.Iterations <= 0 {
 		return fmt.Errorf("iterations must be a positive integer (use -iterations flag)")
 	}
 
-	if _, err := os.Stat(config.PlanFile); os.IsNotExist(err) {
-		return fmt.Errorf("plan file not found: %s", config.PlanFile)
+	if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
+		return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
 	}
 
 	// Check if agent command exists
-	if _, err := exec.LookPath(config.AgentCmd); err != nil {
-		return fmt.Errorf("agent command not found in PATH: %s", config.AgentCmd)
+	if _, err := exec.LookPath(cfg.AgentCmd); err != nil {
+		return fmt.Errorf("agent command not found in PATH: %s", cfg.AgentCmd)
 	}
 
 	return nil
 }
 
-func runIterations(config *Config) error {
+func runIterations(cfg *config.Config) error {
 	fmt.Printf("Starting iterative development workflow\n")
-	fmt.Printf("Plan file: %s\n", config.PlanFile)
-	fmt.Printf("Progress file: %s\n", config.ProgressFile)
-	fmt.Printf("Iterations: %d\n", config.Iterations)
-	fmt.Printf("Agent command: %s\n", config.AgentCmd)
-	if config.Verbose {
-		fmt.Printf("Type check command: %s\n", config.TypeCheckCmd)
-		fmt.Printf("Test command: %s\n", config.TestCmd)
+	fmt.Printf("Plan file: %s\n", cfg.PlanFile)
+	fmt.Printf("Progress file: %s\n", cfg.ProgressFile)
+	fmt.Printf("Iterations: %d\n", cfg.Iterations)
+	fmt.Printf("Agent command: %s\n", cfg.AgentCmd)
+	if cfg.Verbose {
+		fmt.Printf("Type check command: %s\n", cfg.TypeCheckCmd)
+		fmt.Printf("Test command: %s\n", cfg.TestCmd)
 	}
 	fmt.Println()
 
-	for i := 1; i <= config.Iterations; i++ {
-		fmt.Printf("=== Iteration %d/%d ===\n", i, config.Iterations)
+	for i := 1; i <= cfg.Iterations; i++ {
+		fmt.Printf("=== Iteration %d/%d ===\n", i, cfg.Iterations)
 
-		if config.Verbose {
+		if cfg.Verbose {
 			fmt.Printf("Executing agent command...\n")
 		}
 
+		// Build the prompt for the AI agent
+		iterPrompt := prompt.BuildIterationPrompt(cfg)
+
+		if cfg.Verbose {
+			fmt.Printf("Prompt: %s\n", iterPrompt)
+		}
+
 		// Execute the AI agent CLI tool
-		result, err := executeAgent(config, i)
+		result, err := agent.Execute(cfg, iterPrompt)
 		if err != nil {
 			return fmt.Errorf("iteration %d failed: %w", i, err)
 		}
@@ -386,7 +206,7 @@ func runIterations(config *Config) error {
 		fmt.Println(result)
 
 		// Check for completion signal
-		if strings.Contains(result, completeSignal) {
+		if strings.Contains(result, prompt.CompleteSignal) {
 			fmt.Printf("\n✓ Plan complete! Detected completion signal after %d iteration(s).\n", i)
 			return nil
 		}
@@ -394,217 +214,71 @@ func runIterations(config *Config) error {
 		fmt.Println() // Empty line between iterations
 	}
 
-	fmt.Printf("Completed %d iteration(s) without completion signal.\n", config.Iterations)
+	fmt.Printf("Completed %d iteration(s) without completion signal.\n", cfg.Iterations)
 	return nil
 }
 
-func executeAgent(config *Config, iteration int) (string, error) {
-	// Build the prompt for the AI agent
-	prompt := buildPrompt(config)
-
-	if config.Verbose {
-		fmt.Printf("Prompt: %s\n", prompt)
-	}
-
-	// Construct the command based on the agent type
-	var cmd *exec.Cmd
-	if isCursorAgent(config.AgentCmd) {
-		// cursor-agent uses --print --force and prompt as positional argument
-		cmd = exec.Command(config.AgentCmd, "--print", "--force", prompt)
-	} else {
-		// claude uses --permission-mode acceptEdits -p format
-		cmd = exec.Command(config.AgentCmd, "--permission-mode", "acceptEdits", "-p", prompt)
-	}
-
-	if config.Verbose {
-		fmt.Printf("Command: %s %v\n", cmd.Path, cmd.Args)
-	}
-
-	// Capture stdout and stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return "", fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	// Start the command
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start agent command: %w", err)
-	}
-
-	// Read stdout and stderr concurrently
-	var stdoutBytes, stderrBytes []byte
-	stdoutDone := make(chan error, 1)
-	stderrDone := make(chan error, 1)
-
-	go func() {
-		var err error
-		stdoutBytes, err = io.ReadAll(stdout)
-		stdoutDone <- err
-	}()
-
-	go func() {
-		var err error
-		stderrBytes, err = io.ReadAll(stderr)
-		stderrDone <- err
-	}()
-
-	// Wait for both to complete
-	if err := <-stdoutDone; err != nil {
-		cmd.Process.Kill()
-		return "", fmt.Errorf("failed to read stdout: %w", err)
-	}
-
-	if err := <-stderrDone; err != nil {
-		cmd.Process.Kill()
-		return "", fmt.Errorf("failed to read stderr: %w", err)
-	}
-
-	// Wait for command to finish
-	if err := cmd.Wait(); err != nil {
-		// Include stderr in error message if available
-		if len(stderrBytes) > 0 {
-			return "", fmt.Errorf("agent command failed: %w\nstderr: %s", err, string(stderrBytes))
-		}
-		return "", fmt.Errorf("agent command failed: %w", err)
-	}
-
-	// Combine stdout and stderr for output
-	output := strings.TrimSpace(string(stdoutBytes))
-	if len(stderrBytes) > 0 {
-		output += "\n" + strings.TrimSpace(string(stderrBytes))
-	}
-
-	return output, nil
-}
-
-// isCursorAgent checks if the agent command is cursor-agent
-// This detects cursor-agent, cursor, or any command containing "cursor-agent"
-func isCursorAgent(agentCmd string) bool {
-	cmd := strings.ToLower(agentCmd)
-	return strings.Contains(cmd, "cursor-agent") ||
-		(strings.Contains(cmd, "cursor") && !strings.Contains(cmd, "claude"))
-}
-
-func buildPrompt(config *Config) string {
-	// Resolve absolute paths for the plan and progress files
-	planPath, err := filepath.Abs(config.PlanFile)
-	if err != nil {
-		planPath = config.PlanFile
-	}
-
-	progressPath, err := filepath.Abs(config.ProgressFile)
-	if err != nil {
-		progressPath = config.ProgressFile
-	}
-
-	// Build the prompt string as a single line (matching bash script behavior)
-	// The bash script uses backslash continuation, which results in a single-line string
-	prompt := fmt.Sprintf("@%s @%s ", planPath, progressPath)
-	prompt += "1. Find the highest-priority feature to work on and work only on that feature. "
-	prompt += "This should be the one YOU decide has the highest priority - not necessarily the first in the list. "
-	prompt += fmt.Sprintf("2. Check that the types check via %s and that the tests pass via %s. ", config.TypeCheckCmd, config.TestCmd)
-	prompt += "3. Update the PRD with the work that was done. "
-	prompt += "4. Append your progress to the progress.txt file. "
-	prompt += "Use this to leave a note for the next person working in the codebase. "
-	prompt += "5. Make a git commit of that feature. "
-	prompt += "ONLY WORK ON A SINGLE FEATURE. "
-	prompt += "If, while implementing the feature, you notice the PRD is complete, output <promise>COMPLETE</promise>. "
-
-	return prompt
-}
-
-// Helper function to read plan file
-func readPlanFile(path string) ([]Plan, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read plan file: %w", err)
-	}
-
-	var plans []Plan
-	if err := json.Unmarshal(data, &plans); err != nil {
-		return nil, fmt.Errorf("failed to parse plan file: %w", err)
-	}
-
-	return plans, nil
-}
-
 // listPlanStatus displays plan status (tested/untested features)
-func listPlanStatus(config *Config) error {
-	plans, err := readPlanFile(config.PlanFile)
+func listPlanStatus(cfg *config.Config) error {
+	plans, err := plan.ReadFile(cfg.PlanFile)
 	if err != nil {
 		return err
 	}
 
 	// Determine what to show
-	showTested := config.ListStatus || config.ListTested
-	showUntested := config.ListStatus || config.ListUntested
+	showTested := cfg.ListStatus || cfg.ListTested
+	showUntested := cfg.ListStatus || cfg.ListUntested
 
 	if showTested {
-		fmt.Printf("=== Tested Features (from %s) ===\n", config.PlanFile)
-		tested := filterPlans(plans, true)
+		fmt.Printf("=== Tested Features (from %s) ===\n", cfg.PlanFile)
+		tested := plan.Filter(plans, true)
 		if len(tested) == 0 {
 			fmt.Println("No tested features found")
 		} else {
-			printPlans(tested)
+			plan.Print(tested)
 		}
 		fmt.Println()
 	}
 
 	if showUntested {
-		fmt.Printf("=== Untested Features (from %s) ===\n", config.PlanFile)
-		untested := filterPlans(plans, false)
+		fmt.Printf("=== Untested Features (from %s) ===\n", cfg.PlanFile)
+		untested := plan.Filter(plans, false)
 		if len(untested) == 0 {
 			fmt.Println("No untested features found")
 		} else {
-			printPlans(untested)
+			plan.Print(untested)
 		}
 	}
 
 	return nil
 }
 
-// filterPlans filters plans by tested status
-func filterPlans(plans []Plan, tested bool) []Plan {
-	var result []Plan
-	for _, plan := range plans {
-		if plan.Tested == tested {
-			result = append(result, plan)
-		}
-	}
-	return result
-}
-
 // generatePlanFromNotes generates a plan.json file from notes using the AI agent
-func generatePlanFromNotes(config *Config) error {
-	fmt.Printf("Generating plan from notes file: %s\n", config.NotesFile)
-	fmt.Printf("Output plan file: %s\n", config.OutputPlanFile)
-	fmt.Printf("Agent command: %s\n\n", config.AgentCmd)
+func generatePlanFromNotes(cfg *config.Config) error {
+	fmt.Printf("Generating plan from notes file: %s\n", cfg.NotesFile)
+	fmt.Printf("Output plan file: %s\n", cfg.OutputPlanFile)
+	fmt.Printf("Agent command: %s\n\n", cfg.AgentCmd)
 
 	// Resolve absolute paths
-	notesPath, err := filepath.Abs(config.NotesFile)
+	notesPath, err := filepath.Abs(cfg.NotesFile)
 	if err != nil {
-		notesPath = config.NotesFile
+		notesPath = cfg.NotesFile
 	}
 
-	outputPath, err := filepath.Abs(config.OutputPlanFile)
+	outputPath, err := filepath.Abs(cfg.OutputPlanFile)
 	if err != nil {
-		outputPath = config.OutputPlanFile
+		outputPath = cfg.OutputPlanFile
 	}
 
 	// Build the prompt for plan generation
-	prompt := buildPlanGenerationPrompt(notesPath, outputPath)
+	genPrompt := prompt.BuildPlanGenerationPrompt(notesPath, outputPath)
 
-	if config.Verbose {
-		fmt.Printf("Prompt: %s\n\n", prompt)
+	if cfg.Verbose {
+		fmt.Printf("Prompt: %s\n\n", genPrompt)
 	}
 
 	// Execute the agent
-	result, err := executeAgentForPlanGeneration(config, prompt)
+	result, err := agent.Execute(cfg, genPrompt)
 	if err != nil {
 		return fmt.Errorf("failed to generate plan: %w", err)
 	}
@@ -613,7 +287,7 @@ func generatePlanFromNotes(config *Config) error {
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 		// If file doesn't exist, try to extract JSON from the result and write it
 		fmt.Println("Plan file not found, attempting to extract from agent output...")
-		if err := extractAndWritePlan(result, outputPath); err != nil {
+		if err := plan.ExtractAndWrite(result, outputPath); err != nil {
 			return fmt.Errorf("failed to extract plan from output: %w\n\nAgent output:\n%s", err, result)
 		}
 	}
@@ -622,185 +296,7 @@ func generatePlanFromNotes(config *Config) error {
 	return nil
 }
 
-// buildPlanGenerationPrompt creates the prompt for converting notes to plan.json
-func buildPlanGenerationPrompt(notesPath, outputPath string) string {
-	prompt := fmt.Sprintf("@%s ", notesPath)
-	prompt += "Analyze this notes file and create a comprehensive, step-by-step implementation plan in JSON format. "
-	prompt += "The plan should be saved as a JSON file at: " + outputPath + " "
-	prompt += "The JSON must be a valid array of plan objects, each with the following structure: "
-	prompt += "{ \"id\": number, \"category\": string (e.g., \"chore\", \"infra\", \"db\", \"ui\", \"feature\", \"other\"), "
-	prompt += "\"description\": string (clear, actionable description), "
-	prompt += "\"steps\": [string] (array of specific, implementable steps), "
-	prompt += "\"expected_output\": string (what success looks like), "
-	prompt += "\"tested\": boolean (default false) }. "
-	prompt += "Break down the notes into logical, sequential features/tasks. "
-	prompt += "Each plan item should be self-contained and implementable. "
-	prompt += "Categories should reflect the type of work: 'chore' for setup/tooling, 'infra' for infrastructure, "
-	prompt += "'db' for database work, 'ui' for frontend, 'feature' for features, 'other' for core logic/services. "
-	prompt += "Ensure the JSON is valid and properly formatted. "
-	prompt += "Write the complete JSON array to the file: " + outputPath
-
-	return prompt
-}
-
-// executeAgentForPlanGeneration executes the agent with plan generation prompt
-func executeAgentForPlanGeneration(config *Config, prompt string) (string, error) {
-	// Construct the command based on the agent type
-	var cmd *exec.Cmd
-	if isCursorAgent(config.AgentCmd) {
-		// cursor-agent uses --print --force and prompt as positional argument
-		cmd = exec.Command(config.AgentCmd, "--print", "--force", prompt)
-	} else {
-		// claude uses --permission-mode acceptEdits -p format
-		cmd = exec.Command(config.AgentCmd, "--permission-mode", "acceptEdits", "-p", prompt)
-	}
-
-	if config.Verbose {
-		fmt.Printf("Command: %s %v\n", cmd.Path, cmd.Args)
-	}
-
-	// Capture stdout and stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return "", fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-
-	// Start the command
-	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("failed to start agent command: %w", err)
-	}
-
-	// Read stdout and stderr concurrently
-	var stdoutBytes, stderrBytes []byte
-	stdoutDone := make(chan error, 1)
-	stderrDone := make(chan error, 1)
-
-	go func() {
-		var err error
-		stdoutBytes, err = io.ReadAll(stdout)
-		stdoutDone <- err
-	}()
-
-	go func() {
-		var err error
-		stderrBytes, err = io.ReadAll(stderr)
-		stderrDone <- err
-	}()
-
-	// Wait for both to complete
-	if err := <-stdoutDone; err != nil {
-		cmd.Process.Kill()
-		return "", fmt.Errorf("failed to read stdout: %w", err)
-	}
-
-	if err := <-stderrDone; err != nil {
-		cmd.Process.Kill()
-		return "", fmt.Errorf("failed to read stderr: %w", err)
-	}
-
-	// Wait for command to finish
-	if err := cmd.Wait(); err != nil {
-		// Include stderr in error message if available
-		if len(stderrBytes) > 0 {
-			return "", fmt.Errorf("agent command failed: %w\nstderr: %s", err, string(stderrBytes))
-		}
-		return "", fmt.Errorf("agent command failed: %w", err)
-	}
-
-	// Combine stdout and stderr for output
-	output := strings.TrimSpace(string(stdoutBytes))
-	if len(stderrBytes) > 0 {
-		output += "\n" + strings.TrimSpace(string(stderrBytes))
-	}
-
-	return output, nil
-}
-
-// extractAndWritePlan attempts to extract JSON from agent output and write it to file
-func extractAndWritePlan(output, outputPath string) error {
-	// Try to find JSON array in the output
-	// Look for content between ```json and ``` or just find the JSON array
-	jsonStart := strings.Index(output, "[")
-	if jsonStart == -1 {
-		// Try to find code block
-		jsonBlockStart := strings.Index(output, "```json")
-		if jsonBlockStart != -1 {
-			jsonStart = jsonBlockStart + 7
-		} else {
-			jsonBlockStart = strings.Index(output, "```")
-			if jsonBlockStart != -1 {
-				jsonStart = jsonBlockStart + 3
-			}
-		}
-	}
-
-	if jsonStart == -1 {
-		return fmt.Errorf("could not find JSON in output")
-	}
-
-	// Find the end of the JSON array
-	jsonEnd := strings.LastIndex(output, "]")
-	if jsonEnd == -1 || jsonEnd <= jsonStart {
-		return fmt.Errorf("could not find end of JSON array")
-	}
-
-	// Extract JSON
-	jsonContent := strings.TrimSpace(output[jsonStart : jsonEnd+1])
-
-	// Validate it's valid JSON by parsing it
-	var plans []Plan
-	if err := json.Unmarshal([]byte(jsonContent), &plans); err != nil {
-		return fmt.Errorf("extracted content is not valid JSON: %w", err)
-	}
-
-	// Write to file with proper formatting
-	formattedJSON, err := json.MarshalIndent(plans, "", "    ")
-	if err != nil {
-		return fmt.Errorf("failed to format JSON: %w", err)
-	}
-
-	if err := os.WriteFile(outputPath, formattedJSON, 0644); err != nil {
-		return fmt.Errorf("failed to write plan file: %w", err)
-	}
-
-	return nil
-}
-
-// printPlans prints plans in a formatted table
-func printPlans(plans []Plan) {
-	// Find max widths for formatting
-	maxIDLen := 0
-	maxCatLen := 0
-	for _, plan := range plans {
-		idLen := len(fmt.Sprintf("%d", plan.ID))
-		if idLen > maxIDLen {
-			maxIDLen = idLen
-		}
-		if len(plan.Category) > maxCatLen {
-			maxCatLen = len(plan.Category)
-		}
-	}
-
-	// Ensure minimum widths
-	if maxIDLen < 2 {
-		maxIDLen = 2
-	}
-	if maxCatLen < 8 {
-		maxCatLen = 8
-	}
-
-	// Print formatted output
-	for _, plan := range plans {
-		fmt.Printf("%-*d  %-*s  %s\n", maxIDLen, plan.ID, maxCatLen, plan.Category, plan.Description)
-	}
-}
-
-// Helper function to append to progress file (for potential future use)
+// appendProgress appends a message to the progress file
 func appendProgress(path string, message string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
