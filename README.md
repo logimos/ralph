@@ -8,6 +8,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **AI Agent Integration**: Works with Cursor Agent, Claude, or any compatible CLI tool
 - **Plan Management**: Generate plans from notes, list tested/untested features
 - **Progress Tracking**: Automatically updates plan files and progress logs
+- **Milestone Tracking**: Organize features into milestones with progress visualization
 - **Validation**: Integrates with type checking and testing commands
 - **Git Integration**: Creates commits for completed features
 - **Completion Detection**: Automatically detects when all work is complete
@@ -185,6 +186,12 @@ Memory Options:
         Path to memory file (default ".ralph-memory.json")
   -memory-retention int
         Days to retain memories (default: 90)
+
+Milestone Options:
+  -milestones
+        List all milestones with progress
+  -milestone string
+        Show features for a specific milestone
 ```
 
 ### Output Options
@@ -722,6 +729,175 @@ Memories older than the retention period (default: 90 days) are automatically pr
 
 3. **Result**: Agent maintains consistency without needing repeated instructions
 
+## Milestone-Based Progress Tracking
+
+Ralph supports milestone-based progress tracking to help you organize features into meaningful project milestones like "Alpha", "Beta", or "MVP". This provides a higher-level view of progress beyond individual features.
+
+### Defining Milestones
+
+There are two ways to define milestones:
+
+**1. Add milestone field to features in plan.json:**
+
+```json
+[
+  {
+    "id": 1,
+    "description": "User authentication",
+    "milestone": "Alpha",
+    "milestone_order": 1,
+    "tested": true
+  },
+  {
+    "id": 2,
+    "description": "User registration",
+    "milestone": "Alpha",
+    "milestone_order": 2,
+    "tested": false
+  },
+  {
+    "id": 3,
+    "description": "Password reset",
+    "milestone": "Beta",
+    "tested": false
+  }
+]
+```
+
+**2. Create a separate milestones file (plan-milestones.json):**
+
+```json
+[
+  {
+    "id": "alpha",
+    "name": "Alpha",
+    "description": "Core authentication features",
+    "criteria": "All auth features working with tests",
+    "order": 1,
+    "features": [1, 2]
+  },
+  {
+    "id": "beta",
+    "name": "Beta",
+    "description": "User management features",
+    "order": 2,
+    "features": [3, 4, 5]
+  }
+]
+```
+
+### Milestone Fields
+
+| Field | Description |
+|-------|-------------|
+| `milestone` | Name of the milestone this feature belongs to (in plan.json) |
+| `milestone_order` | Optional order within the milestone for prioritization |
+| `id` | Unique identifier for the milestone (in milestones file) |
+| `name` | Display name for the milestone |
+| `description` | Description of what the milestone represents |
+| `criteria` | Success criteria for completing the milestone |
+| `order` | Display/priority order for the milestone |
+| `features` | List of feature IDs belonging to this milestone |
+
+### Viewing Milestone Progress
+
+```bash
+# List all milestones with progress
+ralph -milestones
+
+# Output:
+# Milestone Progress:
+#   ◐ Alpha: 1/2 (50%)
+#   ○ Beta: 0/3 (0%)
+#
+# Overall: 0/2 milestones complete, 1/5 features (20%)
+#
+# Next milestone to complete: Alpha ([██████████░░░░░░░░░░] 50%)
+
+# Show features for a specific milestone
+ralph -milestone Alpha
+
+# Output:
+# === Milestone: Alpha ===
+# Description: Core authentication features
+# Success Criteria: All auth features working with tests
+# Progress: [██████████████░░░░░░░░░░░░░░░░] 50%
+# Status: in_progress (1/2 features complete)
+#
+# Features:
+#   [x] 1. User authentication
+#   [ ] 2. User registration
+```
+
+### Progress Indicators
+
+| Symbol | Status |
+|--------|--------|
+| ○ | Not started (0% complete) |
+| ◐ | In progress (1-99% complete) |
+| ● | Complete (100%) |
+
+### Milestone Completion Celebration
+
+When all features in a milestone are marked as tested, Ralph displays a celebration message:
+
+```
+Congratulations! Milestone 'Alpha' is done!
+```
+
+During iterations, Ralph automatically detects newly completed milestones and celebrates them in real-time.
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# List all milestones with progress
+ralph -milestones
+
+# Show features for a specific milestone
+ralph -milestone Alpha
+ralph -milestone "Beta Release"
+```
+
+### Integration with Iterations
+
+During `ralph -iterations`, milestone progress is:
+
+1. **Displayed at start** (verbose mode) - Shows current progress for all milestones
+2. **Monitored during execution** - Detects and celebrates newly completed milestones
+3. **Summarized at end** - Shows final milestone status and suggests next milestone to focus on
+
+### Example Workflow
+
+1. **Define milestones** in your plan.json:
+   ```json
+   [
+     {"id": 1, "description": "Setup CI/CD", "milestone": "Infrastructure", "tested": true},
+     {"id": 2, "description": "Add database", "milestone": "Infrastructure", "tested": false},
+     {"id": 3, "description": "User auth", "milestone": "MVP", "tested": false},
+     {"id": 4, "description": "User dashboard", "milestone": "MVP", "tested": false}
+   ]
+   ```
+
+2. **Check progress**:
+   ```bash
+   ralph -milestones
+   # ◐ Infrastructure: 1/2 (50%)
+   # ○ MVP: 0/2 (0%)
+   ```
+
+3. **Run iterations** and watch milestones complete:
+   ```bash
+   ralph -iterations 5 -verbose
+   # ... during execution ...
+   # Congratulations! Milestone 'Infrastructure' is done!
+   ```
+
+4. **View final status**:
+   ```bash
+   ralph -milestone MVP
+   ```
+
 ## Plan File Format
 
 Plans are JSON files containing an array of feature objects:
@@ -751,6 +927,8 @@ Plans are JSON files containing an array of feature objects:
 - `steps` (array): Array of specific, implementable steps
 - `expected_output` (string): What success looks like
 - `tested` (boolean): Whether the feature has been tested (default: false)
+- `milestone` (string): Optional milestone name this feature belongs to
+- `milestone_order` (number): Optional order within the milestone for prioritization
 
 ## Workflow
 

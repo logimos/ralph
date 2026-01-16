@@ -378,3 +378,66 @@ internal/memory/
 - Consider adding memory export/import for team sharing
 - The memory package is independent and could be used by other features
 
+## 2026-01-16: Milestone-Based Progress Tracking (Feature #5)
+
+### Completed
+- Extended Plan struct in `internal/plan/plan.go` with:
+  - `Milestone` field (string) - Optional milestone name
+  - `MilestoneOrder` field (int) - Optional order within milestone
+- Created `internal/milestone` package with comprehensive milestone management:
+  - `milestone.go` - Manager, Milestone, Progress structs and all operations
+  - `milestone_test.go` - 20+ tests covering all functionality
+- Implemented milestone features:
+  - Milestone extraction from plan `milestone` fields (automatic)
+  - Explicit milestone definitions via separate milestones file
+  - Progress calculation (completed/total features per milestone)
+  - Status tracking (not_started, in_progress, complete)
+  - Progress bars and formatted output
+  - Celebration messages for completed milestones
+  - Summary display with overall progress
+- Added CLI flags:
+  - `-milestones` - List all milestones with progress
+  - `-milestone <name>` - Show features for a specific milestone
+- Integrated milestone tracking into `runIterations()`:
+  - Shows milestone progress in verbose output at start
+  - Detects and celebrates newly completed milestones during execution
+  - Shows milestone summary at end of run
+  - Suggests next milestone to focus on
+- Updated Config struct with `ListMilestones` and `ShowMilestone` fields
+- Updated README.md with comprehensive milestone documentation:
+  - Defining milestones (via plan.json or separate file)
+  - Viewing milestone progress
+  - Progress indicators and status
+  - Integration with iterations
+  - Example workflow
+- All 150+ tests passing (20+ milestone tests + existing tests)
+
+### Package Structure
+```
+internal/milestone/
+├── milestone.go      # Manager, Milestone, Progress structs, all operations
+└── milestone_test.go # 20+ tests covering extraction, progress, formatting
+```
+
+### Milestone Features
+- **Two ways to define milestones**:
+  1. Add `milestone` field to features in plan.json
+  2. Create separate milestones.json with explicit milestone definitions
+- **Progress calculation**: Tracks completed vs total features per milestone
+- **Status indicators**: ○ (not started), ◐ (in progress), ● (complete)
+- **Progress bars**: Visual progress bar with percentage
+- **Celebrations**: Messages when milestones are completed
+- **Ordering**: `milestone_order` field for prioritizing features within milestones
+
+### Notes for Next Developer
+- Milestones can be defined in two ways: via `milestone` field in plans, or explicit milestone definitions
+- The Manager loads plans and can optionally load milestone definitions from a separate file
+- Progress is calculated dynamically based on the `tested` status of features
+- Milestone completion is detected by comparing completed milestones before/after each iteration
+- Case-insensitive matching for milestone names (Alpha == alpha)
+- The `milestone_order` field controls feature ordering within a milestone
+- Explicit feature IDs in milestone definitions take precedence over `milestone` field matching
+- Consider adding milestone deadlines in future iterations
+- Consider adding milestone dependencies (milestone A must complete before B)
+- The milestone package is independent and follows the established package-per-concern pattern
+

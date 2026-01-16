@@ -14,6 +14,7 @@ import (
 	"github.com/logimos/ralph/internal/detection"
 	"github.com/logimos/ralph/internal/environment"
 	"github.com/logimos/ralph/internal/memory"
+	"github.com/logimos/ralph/internal/milestone"
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
@@ -50,6 +51,19 @@ func main() {
 	// Handle memory commands (don't require iterations or plan file)
 	if cfg.ShowMemory || cfg.ClearMemory || cfg.AddMemory != "" {
 		if err := handleMemoryCommands(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Handle milestone commands (require plan file but not iterations)
+	if cfg.ListMilestones || cfg.ShowMilestone != "" {
+		if err := validateConfig(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := handleMilestoneCommands(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -118,6 +132,9 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.ClearMemory, "clear-memory", false, "Clear all stored memories")
 	flag.StringVar(&cfg.AddMemory, "add-memory", "", "Add a memory entry (format: type:content where type is decision, convention, tradeoff, or context)")
 	flag.IntVar(&cfg.MemoryRetention, "memory-retention", config.DefaultMemoryRetention, "Days to retain memories (default: 90)")
+	// Milestone-related flags
+	flag.BoolVar(&cfg.ListMilestones, "milestones", false, "List all milestones with progress")
+	flag.StringVar(&cfg.ShowMilestone, "milestone", "", "Show features for a specific milestone")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -186,6 +203,17 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  AI agents can create memories using markers in their output:\n")
 		fmt.Fprintf(os.Stderr, "    [REMEMBER:DECISION]Use PostgreSQL for all persistence[/REMEMBER]\n")
+		fmt.Fprintf(os.Stderr, "\nMilestone Tracking:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph supports milestone-based progress tracking.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Define milestones by adding 'milestone' field to plan.json features:\n")
+		fmt.Fprintf(os.Stderr, "    {\"id\": 1, \"description\": \"Feature\", \"milestone\": \"Alpha\"}\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Optional: Use 'milestone_order' to control feature order within a milestone.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -milestones          List all milestones with progress\n")
+		fmt.Fprintf(os.Stderr, "    -milestone <name>    Show features for a specific milestone\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -194,6 +222,8 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -status                          # Show plan status\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-tested                     # List tested features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-untested                   # List untested features\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -milestones                      # Show milestone progress\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -milestone Alpha                 # Show features for 'Alpha' milestone\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -generate-plan -notes notes.md   # Generate plan.json from notes\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -generate-plan -notes notes.md -output my-plan.json  # Custom output file\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -show-memory                     # Display stored memories\n", os.Args[0])
@@ -337,8 +367,8 @@ func validateConfig(cfg *config.Config) error {
 		return nil
 	}
 
-	// Skip iteration validation if we're just listing status
-	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested {
+	// Skip iteration validation if we're just listing status or milestones
+	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested || cfg.ListMilestones || cfg.ShowMilestone != "" {
 		if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
 			return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
 		}
@@ -424,6 +454,28 @@ func runIterations(cfg *config.Config) error {
 	output.Info("Recovery strategy: %s (max %d retries)", cfg.RecoveryStrategy, cfg.MaxRetries)
 	if memStore.Count() > 0 {
 		output.Info("Memory: %d entries loaded from %s", memStore.Count(), cfg.MemoryFile)
+	}
+	
+	// Load plans and create milestone manager
+	plans, planErr := plan.ReadFile(cfg.PlanFile)
+	var milestoneMgr *milestone.Manager
+	var completedMilestonesBefore map[string]bool
+	if planErr == nil {
+		milestoneMgr = milestone.NewManager(plans)
+		
+		// Record which milestones are complete before we start
+		completedMilestonesBefore = make(map[string]bool)
+		for _, p := range milestoneMgr.GetCompletedMilestones() {
+			completedMilestonesBefore[p.Milestone.Name] = true
+		}
+		
+		// Show milestone progress in verbose mode
+		if cfg.Verbose && milestoneMgr.HasMilestones() {
+			output.SubHeader("Milestone Progress")
+			for _, p := range milestoneMgr.CalculateAllProgress() {
+				output.Print("  %s", milestone.FormatProgress(p))
+			}
+		}
 	}
 	
 	if cfg.Verbose {
@@ -515,7 +567,30 @@ func runIterations(cfg *config.Config) error {
 			summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
 			output.PrintSummary(summary)
 			printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
+			
+			// Show final milestone status
+			if milestoneMgr != nil && milestoneMgr.HasMilestones() {
+				output.SubHeader("Final Milestone Status")
+				output.Print("%s", milestoneMgr.Summary())
+			}
 			return nil
+		}
+		
+		// Check for newly completed milestones
+		if milestoneMgr != nil && milestoneMgr.HasMilestones() {
+			// Reload plans to get updated tested status
+			updatedPlans, err := plan.ReadFile(cfg.PlanFile)
+			if err == nil {
+				milestoneMgr = milestone.NewManager(updatedPlans)
+				
+				// Check for newly completed milestones
+				for _, p := range milestoneMgr.GetCompletedMilestones() {
+					if !completedMilestonesBefore[p.Milestone.Name] {
+						output.Success("%s", milestone.CelebrationMessage(p.Milestone.Name))
+						completedMilestonesBefore[p.Milestone.Name] = true
+					}
+				}
+			}
 		}
 
 		// Handle failure detection and recovery
@@ -573,6 +648,25 @@ func runIterations(cfg *config.Config) error {
 	if memStore.Count() > 0 && cfg.Verbose {
 		output.SubHeader("Memory Status")
 		output.Print("Total memories: %d (stored in %s)", memStore.Count(), cfg.MemoryFile)
+	}
+	
+	// Print milestone summary if milestones are defined
+	if milestoneMgr != nil && milestoneMgr.HasMilestones() {
+		// Reload plans to get updated tested status
+		updatedPlans, err := plan.ReadFile(cfg.PlanFile)
+		if err == nil {
+			milestoneMgr = milestone.NewManager(updatedPlans)
+		}
+		output.SubHeader("Milestone Progress")
+		output.Print("%s", milestoneMgr.Summary())
+		
+		// Show next milestone to complete
+		next := milestoneMgr.GetNextMilestoneToComplete()
+		if next != nil {
+			output.Info("Next milestone: %s (%s)",
+				next.Milestone.Name,
+				milestone.FormatProgressBar(next, 20))
+		}
 	}
 	
 	return nil
@@ -801,4 +895,100 @@ func extractAndStoreMemories(store *memory.Store, output, category string) int {
 	}
 
 	return stored
+}
+
+// handleMilestoneCommands processes milestone-related CLI commands
+func handleMilestoneCommands(cfg *config.Config) error {
+	// Load plans
+	plans, err := plan.ReadFile(cfg.PlanFile)
+	if err != nil {
+		return err
+	}
+
+	// Create milestone manager
+	mgr := milestone.NewManager(plans)
+
+	// Try to load milestones from a separate file if it exists
+	// Check for milestones.json in the same directory as plan file
+	milestonesFile := strings.TrimSuffix(cfg.PlanFile, ".json") + "-milestones.json"
+	if _, err := os.Stat(milestonesFile); err == nil {
+		if err := mgr.LoadMilestones(milestonesFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load milestones file: %v\n", err)
+		}
+	}
+
+	// Handle -milestones flag (list all milestones with progress)
+	if cfg.ListMilestones {
+		if !mgr.HasMilestones() {
+			fmt.Println("No milestones defined.")
+			fmt.Println()
+			fmt.Println("To define milestones, either:")
+			fmt.Println("  1. Add a 'milestone' field to your plan.json features")
+			fmt.Println("  2. Create a milestones.json file with milestone definitions")
+			fmt.Println()
+			fmt.Println("Example plan.json with milestones:")
+			fmt.Println("  [")
+			fmt.Println("    {\"id\": 1, \"description\": \"Feature A\", \"milestone\": \"Alpha\"},")
+			fmt.Println("    {\"id\": 2, \"description\": \"Feature B\", \"milestone\": \"Alpha\"},")
+			fmt.Println("    {\"id\": 3, \"description\": \"Feature C\", \"milestone\": \"Beta\"}")
+			fmt.Println("  ]")
+			return nil
+		}
+
+		fmt.Println(mgr.Summary())
+
+		// Check for completed milestones and show celebration
+		completed := mgr.GetCompletedMilestones()
+		for _, p := range completed {
+			fmt.Printf("\n%s\n", milestone.CelebrationMessage(p.Milestone.Name))
+		}
+
+		// Show next milestone to complete
+		next := mgr.GetNextMilestoneToComplete()
+		if next != nil {
+			fmt.Printf("\nNext milestone to complete: %s (%s)\n",
+				next.Milestone.Name,
+				milestone.FormatProgressBar(next, 20))
+		}
+
+		return nil
+	}
+
+	// Handle -milestone <name> flag (show features for specific milestone)
+	if cfg.ShowMilestone != "" {
+		progress := mgr.CalculateProgress(cfg.ShowMilestone)
+
+		if progress.TotalFeatures == 0 {
+			return fmt.Errorf("milestone '%s' not found or has no features", cfg.ShowMilestone)
+		}
+
+		fmt.Printf("=== Milestone: %s ===\n", progress.Milestone.Name)
+		if progress.Milestone.Description != "" {
+			fmt.Printf("Description: %s\n", progress.Milestone.Description)
+		}
+		if progress.Milestone.Criteria != "" {
+			fmt.Printf("Success Criteria: %s\n", progress.Milestone.Criteria)
+		}
+		fmt.Printf("Progress: %s\n", milestone.FormatProgressBar(progress, 30))
+		fmt.Printf("Status: %s (%d/%d features complete)\n\n",
+			progress.Status, progress.CompletedFeatures, progress.TotalFeatures)
+
+		fmt.Println("Features:")
+		for _, f := range progress.Features {
+			status := "[ ]"
+			if f.Tested {
+				status = "[x]"
+			}
+			fmt.Printf("  %s %d. %s\n", status, f.ID, f.Description)
+		}
+
+		// Show celebration if milestone is complete
+		if progress.Status == milestone.StatusComplete {
+			fmt.Printf("\n%s\n", milestone.CelebrationMessage(progress.Milestone.Name))
+		}
+
+		return nil
+	}
+
+	return nil
 }

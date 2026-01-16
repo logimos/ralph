@@ -91,7 +91,7 @@
             "Update README with milestone documentation"
         ],
         "expected_output": "Users can define milestones like 'API usable' or 'beta-ready', see progress toward each, and get notifications when milestones are reached",
-        "tested": false
+        "tested": true
     },
     {
         "id": 6,

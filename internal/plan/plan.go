@@ -16,6 +16,8 @@ type Plan struct {
 	Steps          []string `json:"steps,omitempty"`
 	ExpectedOutput string   `json:"expected_output,omitempty"`
 	Tested         bool     `json:"tested,omitempty"`
+	Milestone      string   `json:"milestone,omitempty"`       // Optional milestone this feature belongs to
+	MilestoneOrder int      `json:"milestone_order,omitempty"` // Order within the milestone (for prioritization)
 }
 
 // ReadFile reads and parses a plan file

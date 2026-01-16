@@ -47,11 +47,14 @@ type Config struct {
 	JSONOutput bool   // Machine-readable JSON output
 	LogLevel   string // Log level: debug, info, warn, error
 	// Memory-related configuration
-	MemoryFile     string // Path to memory file (default: .ralph-memory.json)
-	ShowMemory     bool   // Display stored memories
-	ClearMemory    bool   // Clear all memories
-	AddMemory      string // Add a manual memory entry (format: "type:content")
-	MemoryRetention int   // Number of days to retain memories (default: 90)
+	MemoryFile      string // Path to memory file (default: .ralph-memory.json)
+	ShowMemory      bool   // Display stored memories
+	ClearMemory     bool   // Clear all memories
+	AddMemory       string // Add a manual memory entry (format: "type:content")
+	MemoryRetention int    // Number of days to retain memories (default: 90)
+	// Milestone-related configuration
+	ListMilestones  bool   // List all milestones with progress
+	ShowMilestone   string // Show features for a specific milestone
 }
 
 // New creates a new Config with default values
