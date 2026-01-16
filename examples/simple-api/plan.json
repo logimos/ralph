@@ -1,0 +1,117 @@
+[
+    {
+        "id": 1,
+        "category": "infra",
+        "description": "Set up Go project structure with basic HTTP server",
+        "steps": [
+            "Initialize go.mod with module name",
+            "Create cmd/api/main.go with HTTP server setup",
+            "Add health check endpoint at /health",
+            "Configure graceful shutdown handling"
+        ],
+        "expected_output": "HTTP server starts on port 8080 with /health endpoint returning 200 OK",
+        "milestone": "foundation",
+        "milestone_order": 1,
+        "tested": false,
+        "validations": [
+            {
+                "type": "http_get",
+                "url": "http://localhost:8080/health",
+                "expected_status": 200,
+                "expected_body": "ok",
+                "description": "Health endpoint returns ok"
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "category": "db",
+        "description": "Add SQLite database with user table",
+        "steps": [
+            "Add mattn/go-sqlite3 dependency",
+            "Create internal/db/db.go for database connection",
+            "Create migrations for users table (id, name, email, created_at)",
+            "Add database initialization on startup"
+        ],
+        "expected_output": "SQLite database file created with users table, connection pool working",
+        "milestone": "foundation",
+        "milestone_order": 2,
+        "tested": false
+    },
+    {
+        "id": 3,
+        "category": "feature",
+        "description": "Implement user CRUD API endpoints",
+        "steps": [
+            "Create internal/handlers/users.go",
+            "Implement POST /api/users for creating users",
+            "Implement GET /api/users for listing users",
+            "Implement GET /api/users/:id for getting a user",
+            "Implement PUT /api/users/:id for updating a user",
+            "Implement DELETE /api/users/:id for deleting a user"
+        ],
+        "expected_output": "All CRUD endpoints work correctly with proper JSON responses and error handling",
+        "milestone": "api",
+        "milestone_order": 1,
+        "tested": false,
+        "validations": [
+            {
+                "type": "http_post",
+                "url": "http://localhost:8080/api/users",
+                "body": "{\"name\": \"Test User\", \"email\": \"test@example.com\"}",
+                "headers": {"Content-Type": "application/json"},
+                "expected_status": 201,
+                "description": "Create user returns 201"
+            },
+            {
+                "type": "http_get",
+                "url": "http://localhost:8080/api/users",
+                "expected_status": 200,
+                "description": "List users returns 200"
+            }
+        ]
+    },
+    {
+        "id": 4,
+        "category": "chore",
+        "description": "Add unit and integration tests",
+        "steps": [
+            "Create internal/handlers/users_test.go",
+            "Add test for each CRUD operation",
+            "Create test fixtures and helpers",
+            "Add integration tests using httptest"
+        ],
+        "expected_output": "Test coverage >80% for handlers, all tests pass with go test ./...",
+        "milestone": "api",
+        "milestone_order": 2,
+        "tested": false
+    },
+    {
+        "id": 5,
+        "category": "infra",
+        "description": "Add configuration management and environment support",
+        "steps": [
+            "Create internal/config/config.go",
+            "Support environment variables for port, database path",
+            "Add .env.example file with documentation",
+            "Implement config validation"
+        ],
+        "expected_output": "Application configurable via environment variables, defaults work for development",
+        "milestone": "production",
+        "tested": false
+    },
+    {
+        "id": 6,
+        "category": "chore",
+        "description": "Add Makefile and documentation",
+        "steps": [
+            "Create Makefile with build, test, run, clean targets",
+            "Write README.md with setup instructions",
+            "Add API documentation with curl examples",
+            "Create .gitignore for Go projects"
+        ],
+        "expected_output": "Project fully documented, easy to set up and run for new developers",
+        "milestone": "production",
+        "tested": false
+    }
+]

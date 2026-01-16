@@ -1,0 +1,145 @@
+[
+    {
+        "id": 1,
+        "category": "infra",
+        "description": "Set up CLI project structure with Cobra",
+        "steps": [
+            "Initialize go.mod for the CLI tool",
+            "Add spf13/cobra dependency",
+            "Create cmd/root.go with base command",
+            "Add version flag and --verbose flag",
+            "Create main.go entry point"
+        ],
+        "expected_output": "CLI tool skeleton that shows help and version information",
+        "milestone": "Foundation",
+        "milestone_order": 1,
+        "tested": false,
+        "validations": [
+            {
+                "type": "cli_command",
+                "command": "./mytool",
+                "args": ["--version"],
+                "expected_body": "v\\d+\\.\\d+\\.\\d+",
+                "description": "CLI shows version"
+            },
+            {
+                "type": "cli_command",
+                "command": "./mytool",
+                "args": ["--help"],
+                "expected_body": "Usage:",
+                "description": "CLI shows help"
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "category": "feature",
+        "description": "Implement 'init' command to create project scaffolding",
+        "steps": [
+            "Create cmd/init.go with init command",
+            "Add flags: --template, --name, --output",
+            "Implement template directory creation",
+            "Add basic file templates (README, .gitignore, config)",
+            "Add interactive mode with prompts when flags not provided"
+        ],
+        "expected_output": "mytool init creates a new project directory with template files",
+        "milestone": "Foundation",
+        "milestone_order": 2,
+        "tested": false,
+        "validations": [
+            {
+                "type": "cli_command",
+                "command": "./mytool",
+                "args": ["init", "--help"],
+                "expected_body": "--template",
+                "description": "Init command has template flag"
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "category": "feature",
+        "description": "Implement 'generate' command for code generation",
+        "steps": [
+            "Create cmd/generate.go with generate command",
+            "Add subcommands: model, controller, migration",
+            "Implement template-based code generation",
+            "Support custom templates from .mytool/templates/",
+            "Add --dry-run flag to preview generated code"
+        ],
+        "expected_output": "mytool generate model User creates a new model file with boilerplate",
+        "milestone": "Core",
+        "milestone_order": 1,
+        "tested": false
+    },
+    {
+        "id": 4,
+        "category": "feature",
+        "description": "Add configuration file support",
+        "steps": [
+            "Create internal/config package",
+            "Support .mytool.yaml and .mytool.json config files",
+            "Implement config file discovery (current dir, home dir)",
+            "Add config command to view/set configuration",
+            "Support environment variable overrides"
+        ],
+        "expected_output": "CLI reads configuration from file with fallback to defaults",
+        "milestone": "Core",
+        "milestone_order": 2,
+        "tested": false,
+        "validations": [
+            {
+                "type": "cli_command",
+                "command": "./mytool",
+                "args": ["config", "--help"],
+                "expected_body": "configuration",
+                "description": "Config command exists"
+            }
+        ]
+    },
+    {
+        "id": 5,
+        "category": "ui",
+        "description": "Add colored output and progress indicators",
+        "steps": [
+            "Add fatih/color dependency for colored output",
+            "Create internal/ui package for output helpers",
+            "Implement success/error/warning message formatting",
+            "Add spinner for long operations",
+            "Implement --no-color flag for CI environments"
+        ],
+        "expected_output": "CLI has colored output with success/error indicators and spinners",
+        "milestone": "Polish",
+        "tested": false
+    },
+    {
+        "id": 6,
+        "category": "chore",
+        "description": "Add comprehensive testing",
+        "steps": [
+            "Create cmd/root_test.go for command tests",
+            "Add test helpers for CLI testing",
+            "Test init command creates correct files",
+            "Test generate command produces valid output",
+            "Test config loading from different sources"
+        ],
+        "expected_output": "Test coverage >80% for all commands",
+        "milestone": "Polish",
+        "tested": false
+    },
+    {
+        "id": 7,
+        "category": "chore",
+        "description": "Add release automation and documentation",
+        "steps": [
+            "Create Makefile with build, test, release targets",
+            "Add goreleaser.yaml for multi-platform builds",
+            "Write comprehensive README with examples",
+            "Add man page generation",
+            "Create shell completion scripts (bash, zsh, fish)"
+        ],
+        "expected_output": "Tool ready for distribution with documentation and release automation",
+        "milestone": "Polish",
+        "tested": false
+    }
+]

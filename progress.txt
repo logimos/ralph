@@ -1000,3 +1000,77 @@ internal/multiagent/
 - Consider adding agent retry logic at the individual agent level
 - The multiagent package is independent and follows established package-per-concern pattern
 
+## 2026-01-16: Comprehensive Documentation and Examples (Feature #15)
+
+### Completed
+- Created `examples/` directory with three comprehensive sample projects:
+  - `examples/simple-api/` - Basic REST API in Go with SQLite, includes plan.json with validations
+  - `examples/fullstack-app/` - React + Go full-stack task management app with milestones
+  - `examples/cli-tool/` - CLI tool development workflow using Cobra
+- Each example includes:
+  - Complete `plan.json` with milestones, validations, and realistic features
+  - `README.md` with usage instructions and Ralph configuration examples
+
+- Created `CONTRIBUTING.md` with:
+  - Development setup instructions
+  - Project structure overview
+  - Code style guidelines
+  - Testing requirements
+  - Pull request process
+  - Feature development checklist
+
+- Created `docs/` directory with comprehensive documentation:
+  - `ARCHITECTURE.md` - System design, package responsibilities, data flow, interfaces
+  - `CONFIGURATION.md` - Complete configuration reference with all options
+  - `FEATURES.md` - Detailed documentation for all 14 features
+  - `TROUBLESHOOTING.md` - Common issues and solutions guide
+  - `architecture-diagram.txt` - ASCII architecture diagram
+
+- Updated `README.md` with:
+  - Comprehensive FAQ section covering common questions
+  - Links to new documentation files
+  - Links to example projects
+  - Updated Contributing section to reference CONTRIBUTING.md
+
+### Package Structure
+```
+ralph/
+├── CONTRIBUTING.md           # Contribution guidelines
+├── docs/
+│   ├── ARCHITECTURE.md       # System architecture
+│   ├── CONFIGURATION.md      # Config reference
+│   ├── FEATURES.md           # Feature details
+│   ├── TROUBLESHOOTING.md    # Issue resolution
+│   └── architecture-diagram.txt
+└── examples/
+    ├── simple-api/           # Go REST API example
+    │   ├── plan.json
+    │   └── README.md
+    ├── fullstack-app/        # React + Go example
+    │   ├── plan.json
+    │   └── README.md
+    └── cli-tool/             # CLI tool example
+        ├── plan.json
+        └── README.md
+```
+
+### Documentation Coverage
+- **Architecture**: Package responsibilities, data flow, interfaces, file structure
+- **Configuration**: All CLI flags, config file options, build systems, precedence
+- **Features**: All 14 features with usage examples and configuration
+- **Troubleshooting**: Installation, config, agent, build, iteration, recovery issues
+- **FAQ**: 15+ common questions with detailed answers
+
+### Notes for Next Developer
+- All documentation follows a consistent structure and formatting
+- Examples are designed to demonstrate different Ralph use cases:
+  - simple-api: Basic workflow with validations
+  - fullstack-app: Multi-milestone project with milestones
+  - cli-tool: CLI development with Cobra integration
+- The FAQ covers both basic usage and advanced integration scenarios
+- Architecture docs include ASCII diagrams for visual understanding
+- Troubleshooting guide organized by problem category
+- Consider adding video tutorials or interactive examples in the future
+- Consider adding localization support for documentation
+- The PRD is now COMPLETE - all 15 features have been implemented and tested
+

@@ -2437,11 +2437,172 @@ The local build is useful for testing before pushing the tag, but the GitHub Act
 - Git (for commit functionality)
 - jq (optional, for Makefile plan status commands)
 
+## FAQ
+
+### General Questions
+
+**Q: What AI agents does Ralph support?**
+
+A: Ralph works with any CLI-based AI agent. Built-in support includes:
+- **Cursor Agent** (default): Uses `--print --force` flags
+- **Claude CLI**: Uses `--permission-mode acceptEdits -p` format
+
+Any other agent can be used by specifying the `-agent` flag with the appropriate command.
+
+**Q: Do I need to write a plan.json manually?**
+
+A: No! You can generate a plan from notes:
+```bash
+ralph -generate-plan -notes my-notes.md
+```
+Ralph will use the AI agent to convert your notes into a structured plan.
+
+**Q: How does Ralph know when a feature is complete?**
+
+A: Features are marked complete when:
+1. The AI agent updates the `tested: true` field in plan.json
+2. Type checking passes
+3. Tests pass
+
+**Q: Can I use Ralph in CI/CD pipelines?**
+
+A: Yes! Ralph automatically detects CI environments and adapts:
+- Enables verbose output for better logging
+- Increases timeouts for slower CI runners
+- Supports JSON output (`-json-output`) for machine parsing
+- Disables colors in non-TTY environments
+
+### Configuration Questions
+
+**Q: Where should I put my configuration file?**
+
+A: Ralph looks for config files in this order:
+1. Current directory (`.ralph.yaml`, `.ralph.json`, etc.)
+2. Home directory (same file names)
+
+Use `-config path/to/config.yaml` to specify a custom location.
+
+**Q: How do CLI flags interact with config files?**
+
+A: Precedence from lowest to highest:
+1. Built-in defaults
+2. Configuration file
+3. CLI flags (always win)
+
+**Q: Can I use environment variables?**
+
+A: Ralph detects environment variables for CI detection (e.g., `GITHUB_ACTIONS`, `CI`), but doesn't currently read configuration from environment variables. Use config files or CLI flags instead.
+
+### Troubleshooting Questions
+
+**Q: Ralph is stuck on the same feature. What do I do?**
+
+A: Try these approaches:
+1. Enable verbose mode: `ralph -verbose -iterations 5`
+2. Enable auto-replan: `ralph -auto-replan -iterations 10`
+3. Use scope limits: `ralph -scope-limit 3 -iterations 10`
+4. Check the feature's steps - they may be too complex
+
+**Q: Tests pass locally but Ralph says they fail. Why?**
+
+A: Common causes:
+- Different working directory (Ralph runs from project root)
+- Missing environment variables
+- Race conditions in tests
+- Test database not initialized
+
+Run `ralph -verbose` to see the exact commands being executed.
+
+**Q: How do I recover from a bad state?**
+
+A: Options include:
+1. Use rollback recovery: `ralph -recovery-strategy rollback`
+2. Restore a plan version: `ralph -restore-version N`
+3. Git reset manually and restart
+
+### Feature Questions
+
+**Q: What's the difference between memory and nudges?**
+
+A: 
+- **Memory**: Long-term storage for architectural decisions and conventions. Persists across sessions.
+- **Nudges**: Short-term guidance for the current run. Acknowledged after use.
+
+Use memory for "always do X", use nudges for "right now, focus on Y".
+
+**Q: How do milestones differ from goals?**
+
+A:
+- **Milestones**: Groupings of existing features in plan.json. Track progress toward named checkpoints.
+- **Goals**: High-level outcomes that get decomposed into plan items. Start from "what you want" and generate "how to get there".
+
+**Q: Can I run multiple AI agents in parallel?**
+
+A: Yes! Enable multi-agent mode:
+```bash
+ralph -multi-agent -agents agents.json -iterations 10
+```
+
+Configure different agents for implementation, testing, and review roles.
+
+### Integration Questions
+
+**Q: Does Ralph work with monorepos?**
+
+A: Yes. Use a `.ralph.yaml` file with custom commands:
+```yaml
+typecheck: make typecheck-all  # Your monorepo command
+test: make test-all
+```
+
+**Q: Can I integrate Ralph with GitHub Actions?**
+
+A: Yes! Example workflow:
+```yaml
+- name: Run Ralph
+  run: |
+    go install github.com/start-it/ralph@latest
+    ralph -iterations 5 -json-output
+```
+
+Ralph auto-detects GitHub Actions and adjusts behavior accordingly.
+
+**Q: How do I validate that my API works, not just tests pass?**
+
+A: Use outcome validations in plan.json:
+```json
+{
+  "validations": [
+    {
+      "type": "http_get",
+      "url": "http://localhost:8080/health",
+      "expected_status": 200
+    }
+  ]
+}
+```
+
+Run validations: `ralph -validate`
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) - System design and package structure
+- [Configuration](docs/CONFIGURATION.md) - Complete configuration reference
+- [Features](docs/FEATURES.md) - Detailed feature documentation
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+
+## Examples
+
+See the [examples/](examples/) directory for sample projects:
+- [simple-api](examples/simple-api/) - Basic REST API in Go
+- [fullstack-app](examples/fullstack-app/) - React + Go full-stack application
+- [cli-tool](examples/cli-tool/) - CLI tool with Cobra
+
 ## License
 
 [Add your license here]
 
 ## Contributing
 
-[Add contribution guidelines here]
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines, code style, and how to submit pull requests.
 

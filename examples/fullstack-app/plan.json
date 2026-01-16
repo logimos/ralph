@@ -1,0 +1,191 @@
+[
+    {
+        "id": 1,
+        "category": "infra",
+        "description": "Set up monorepo structure with frontend and backend directories",
+        "steps": [
+            "Create frontend/ directory for React app",
+            "Create backend/ directory for Go API",
+            "Initialize package.json in frontend with Vite + React + TypeScript",
+            "Initialize go.mod in backend",
+            "Create root Makefile for orchestrating builds"
+        ],
+        "expected_output": "Monorepo structure with separate frontend/backend, each buildable independently",
+        "milestone": "Setup",
+        "milestone_order": 1,
+        "tested": false
+    },
+    {
+        "id": 2,
+        "category": "infra",
+        "description": "Set up backend Go API with basic endpoints",
+        "steps": [
+            "Create backend/cmd/api/main.go with HTTP server",
+            "Add CORS middleware for frontend communication",
+            "Implement /api/health endpoint",
+            "Add structured JSON logging"
+        ],
+        "expected_output": "Backend API running on port 8080 with CORS support and health check",
+        "milestone": "Setup",
+        "milestone_order": 2,
+        "tested": false,
+        "validations": [
+            {
+                "type": "http_get",
+                "url": "http://localhost:8080/api/health",
+                "expected_status": 200,
+                "description": "Backend health check"
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "category": "ui",
+        "description": "Set up React frontend with TypeScript and Tailwind CSS",
+        "steps": [
+            "Initialize Vite React TypeScript project",
+            "Install and configure Tailwind CSS",
+            "Create basic layout component with header and navigation",
+            "Set up API client for backend communication",
+            "Configure proxy for development API requests"
+        ],
+        "expected_output": "React app with TypeScript, Tailwind, and API client ready",
+        "milestone": "Setup",
+        "milestone_order": 3,
+        "tested": false
+    },
+    {
+        "id": 4,
+        "category": "db",
+        "description": "Add PostgreSQL database with user authentication tables",
+        "steps": [
+            "Add docker-compose.yml with PostgreSQL service",
+            "Create backend/internal/db package for database connection",
+            "Create users table migration (id, email, password_hash, created_at)",
+            "Create sessions table migration (id, user_id, token, expires_at)",
+            "Add database health check to /api/health"
+        ],
+        "expected_output": "PostgreSQL running in Docker with users and sessions tables",
+        "milestone": "Auth",
+        "milestone_order": 1,
+        "tested": false
+    },
+    {
+        "id": 5,
+        "category": "feature",
+        "description": "Implement user registration and login API",
+        "steps": [
+            "Create backend/internal/auth package",
+            "Implement POST /api/auth/register with email/password",
+            "Implement POST /api/auth/login with JWT token response",
+            "Implement POST /api/auth/logout to invalidate session",
+            "Add password hashing with bcrypt",
+            "Add JWT token generation and validation"
+        ],
+        "expected_output": "Auth endpoints working with secure password handling and JWT tokens",
+        "milestone": "Auth",
+        "milestone_order": 2,
+        "tested": false,
+        "validations": [
+            {
+                "type": "http_post",
+                "url": "http://localhost:8080/api/auth/register",
+                "body": "{\"email\": \"test@example.com\", \"password\": \"securepass123\"}",
+                "headers": {"Content-Type": "application/json"},
+                "expected_status": 201,
+                "description": "User registration works"
+            }
+        ]
+    },
+    {
+        "id": 6,
+        "category": "ui",
+        "description": "Create login and registration pages in React",
+        "steps": [
+            "Create frontend/src/pages/Login.tsx with form",
+            "Create frontend/src/pages/Register.tsx with form",
+            "Add form validation with error messages",
+            "Implement auth context for storing JWT token",
+            "Add protected route wrapper component",
+            "Style forms with Tailwind CSS"
+        ],
+        "expected_output": "Login and registration pages with validation, styled with Tailwind",
+        "milestone": "Auth",
+        "milestone_order": 3,
+        "tested": false
+    },
+    {
+        "id": 7,
+        "category": "feature",
+        "description": "Implement task CRUD API with user ownership",
+        "steps": [
+            "Create tasks table migration (id, user_id, title, description, completed, created_at)",
+            "Implement POST /api/tasks (create task)",
+            "Implement GET /api/tasks (list user's tasks)",
+            "Implement PUT /api/tasks/:id (update task)",
+            "Implement DELETE /api/tasks/:id (delete task)",
+            "Add auth middleware to protect task endpoints"
+        ],
+        "expected_output": "Task CRUD API with user ownership and authentication required",
+        "milestone": "Core",
+        "milestone_order": 1,
+        "tested": false
+    },
+    {
+        "id": 8,
+        "category": "ui",
+        "description": "Create task management UI components",
+        "steps": [
+            "Create frontend/src/components/TaskList.tsx",
+            "Create frontend/src/components/TaskItem.tsx with edit/delete",
+            "Create frontend/src/components/TaskForm.tsx for create/edit",
+            "Implement task completion toggle",
+            "Add loading and error states",
+            "Style components with Tailwind CSS"
+        ],
+        "expected_output": "Fully functional task management UI with modern styling",
+        "milestone": "Core",
+        "milestone_order": 2,
+        "tested": false
+    },
+    {
+        "id": 9,
+        "category": "chore",
+        "description": "Add comprehensive tests for frontend and backend",
+        "steps": [
+            "Add backend unit tests for auth and task handlers",
+            "Add backend integration tests with test database",
+            "Set up Vitest for frontend testing",
+            "Add component tests for TaskList and TaskForm",
+            "Add E2E test setup with Playwright (optional)"
+        ],
+        "expected_output": "Test coverage >70% for both frontend and backend",
+        "milestone": "Quality",
+        "tested": false
+    },
+    {
+        "id": 10,
+        "category": "infra",
+        "description": "Create Docker setup for production deployment",
+        "steps": [
+            "Create backend/Dockerfile with multi-stage build",
+            "Create frontend/Dockerfile with nginx",
+            "Update docker-compose.yml for full stack",
+            "Add environment variable configuration",
+            "Create docker-compose.prod.yml for production",
+            "Write deployment documentation"
+        ],
+        "expected_output": "Full stack deployable with docker-compose up",
+        "milestone": "Quality",
+        "tested": false,
+        "validations": [
+            {
+                "type": "cli_command",
+                "command": "docker",
+                "args": ["compose", "config"],
+                "expected_body": "services:",
+                "description": "Docker compose config is valid"
+            }
+        ]
+    }
+]

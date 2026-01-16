@@ -314,6 +314,6 @@
             "Generate and include architecture diagram"
         ],
         "expected_output": "Comprehensive documentation with examples, architecture docs, and troubleshooting guides enabling easy onboarding and contribution",
-        "tested": false
+        "tested": true
     }
 ]

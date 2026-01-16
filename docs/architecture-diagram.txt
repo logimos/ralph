@@ -1,0 +1,181 @@
+Ralph Architecture Diagram
+===========================
+
+This ASCII diagram shows the high-level architecture of Ralph.
+
+                              ┌─────────────────────────────────────┐
+                              │            ralph.go                  │
+                              │         (CLI Entry Point)            │
+                              │                                      │
+                              │  • Flag parsing & validation         │
+                              │  • Configuration loading             │
+                              │  • Command routing                   │
+                              │  • Main iteration loop               │
+                              └──────────────────┬───────────────────┘
+                                                 │
+                 ┌───────────────┬───────────────┼───────────────┬───────────────┐
+                 │               │               │               │               │
+                 ▼               ▼               ▼               ▼               ▼
+        ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐
+        │   config   │  │    plan    │  │   agent    │  │   prompt   │  │     ui     │
+        │            │  │            │  │            │  │            │  │            │
+        │ • Config   │  │ • Plan     │  │ • Execute  │  │ • Build    │  │ • Colors   │
+        │ • FileConf │  │ • ReadFile │  │ • Detect   │  │   prompts  │  │ • Progress │
+        │ • Load     │  │ • Filter   │  │   agent    │  │            │  │ • Spinner  │
+        └────────────┘  └────────────┘  └────────────┘  └────────────┘  └────────────┘
+
+
+  ═══════════════════════════════════════════════════════════════════════════════════
+                              FEATURE PACKAGES
+  ═══════════════════════════════════════════════════════════════════════════════════
+
+
+    Detection & Environment                Memory & State
+    ─────────────────────────             ────────────────────
+    
+    ┌──────────────┐                      ┌──────────────┐  ┌──────────────┐
+    │  detection   │                      │    memory    │  │    nudge     │
+    │              │                      │              │  │              │
+    │ • Build sys  │                      │ • Cross-sess │  │ • Mid-run    │
+    │   detection  │                      │   storage    │  │   guidance   │
+    │ • Presets    │                      │ • Extraction │  │ • File watch │
+    └──────────────┘                      └──────────────┘  └──────────────┘
+    
+    ┌──────────────┐                      ┌──────────────┐
+    │ environment  │                      │  milestone   │
+    │              │                      │              │
+    │ • CI detect  │                      │ • Progress   │
+    │ • Resources  │                      │   tracking   │
+    │ • Adaptation │                      │ • Status     │
+    └──────────────┘                      └──────────────┘
+
+
+    Execution Control                     Advanced Features
+    ─────────────────                     ─────────────────
+    
+    ┌──────────────┐  ┌──────────────┐    ┌──────────────┐  ┌──────────────┐
+    │   recovery   │  │    scope     │    │    goals     │  │  validation  │
+    │              │  │              │    │              │  │              │
+    │ • Failure    │  │ • Iteration  │    │ • Goal mgmt  │  │ • HTTP valid │
+    │   detection  │  │   budgets    │    │ • Decompose  │  │ • CLI valid  │
+    │ • Strategies │  │ • Deadline   │    │ • Progress   │  │ • File valid │
+    └──────────────┘  └──────────────┘    └──────────────┘  └──────────────┘
+    
+    ┌──────────────┐                      ┌──────────────┐
+    │    replan    │                      │  multiagent  │
+    │              │                      │              │
+    │ • Triggers   │                      │ • Roles      │
+    │ • Strategies │                      │ • Orchestr.  │
+    │ • Versioning │                      │ • Parallel   │
+    └──────────────┘                      └──────────────┘
+
+
+  ═══════════════════════════════════════════════════════════════════════════════════
+                              DATA FLOW
+  ═══════════════════════════════════════════════════════════════════════════════════
+
+
+    Configuration Flow:
+    
+    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+    │ Defaults │ ──▶ │  Config  │ ──▶ │   Env    │ ──▶ │   CLI    │
+    │          │     │   File   │     │   Vars   │     │  Flags   │
+    └──────────┘     └──────────┘     └──────────┘     └──────────┘
+         │                │                │                │
+         └────────────────┴────────────────┴────────────────┘
+                                  │
+                                  ▼
+                          ┌──────────────┐
+                          │    Config    │
+                          │   (Final)    │
+                          └──────────────┘
+
+
+    Iteration Flow:
+    
+    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+    │  Load    │ ──▶ │  Build   │ ──▶ │ Execute  │ ──▶ │ Analyze  │
+    │  Plans   │     │  Prompt  │     │  Agent   │     │  Output  │
+    └──────────┘     └──────────┘     └──────────┘     └──────────┘
+                                                             │
+                          ┌──────────────────────────────────┘
+                          │
+                          ▼
+    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+    │ Detect   │ ──▶ │  Apply   │ ──▶ │  Update  │ ──▶ │  Check   │
+    │ Failure  │     │ Recovery │     │ Progress │     │ Complete │
+    └──────────┘     └──────────┘     └──────────┘     └──────────┘
+
+
+  ═══════════════════════════════════════════════════════════════════════════════════
+                              FILE STRUCTURE
+  ═══════════════════════════════════════════════════════════════════════════════════
+
+
+    ralph/
+    ├── ralph.go                # Entry point
+    ├── ralph_test.go           # Main tests
+    │
+    ├── internal/               # Internal packages
+    │   ├── config/            # Configuration
+    │   │   ├── config.go      # Config struct, defaults
+    │   │   └── file.go        # File config loading
+    │   │
+    │   ├── plan/              # Plan management
+    │   │   └── plan.go        # Plan struct, CRUD
+    │   │
+    │   ├── agent/             # AI agent
+    │   │   └── agent.go       # Agent execution
+    │   │
+    │   ├── prompt/            # Prompt building
+    │   │   └── prompt.go      # Prompt construction
+    │   │
+    │   ├── detection/         # Build detection
+    │   │   └── detection.go   # Build sys detect
+    │   │
+    │   ├── environment/       # Environment
+    │   │   └── environment.go # CI, resources
+    │   │
+    │   ├── ui/                # User interface
+    │   │   └── ui.go          # CLI output
+    │   │
+    │   ├── memory/            # Memory system
+    │   │   └── memory.go      # Cross-session
+    │   │
+    │   ├── nudge/             # Nudge system
+    │   │   └── nudge.go       # Mid-run guidance
+    │   │
+    │   ├── milestone/         # Milestones
+    │   │   └── milestone.go   # Progress tracking
+    │   │
+    │   ├── recovery/          # Recovery
+    │   │   ├── recovery.go    # Failure detection
+    │   │   └── strategy.go    # Strategies
+    │   │
+    │   ├── scope/             # Scope control
+    │   │   └── scope.go       # Budgets, defer
+    │   │
+    │   ├── replan/            # Replanning
+    │   │   ├── replan.go      # Triggers
+    │   │   └── strategy.go    # Strategies
+    │   │
+    │   ├── goals/             # Goals
+    │   │   ├── goals.go       # Goal management
+    │   │   └── decompose.go   # Decomposition
+    │   │
+    │   ├── validation/        # Validation
+    │   │   └── validation.go  # Validators
+    │   │
+    │   └── multiagent/        # Multi-agent
+    │       └── multiagent.go  # Orchestration
+    │
+    ├── docs/                  # Documentation
+    │   ├── ARCHITECTURE.md
+    │   ├── CONFIGURATION.md
+    │   ├── FEATURES.md
+    │   └── TROUBLESHOOTING.md
+    │
+    └── examples/              # Examples
+        ├── simple-api/
+        ├── fullstack-app/
+        └── cli-tool/
