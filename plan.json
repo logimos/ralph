@@ -51,7 +51,7 @@
             "Document configuration file format in README.md"
         ],
         "expected_output": "Ralph reads settings from .ralph.yaml or .ralph.json if present, CLI flags override file settings, documented in README",
-        "tested": false
+        "tested": true
     },
     {
         "id": 4,

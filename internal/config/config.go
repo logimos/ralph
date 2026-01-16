@@ -27,6 +27,7 @@ type Config struct {
 	GeneratePlan   bool
 	NotesFile      string
 	OutputPlanFile string
+	ConfigFile     string // Path to config file (if specified via -config flag)
 }
 
 // New creates a new Config with default values

@@ -70,6 +70,10 @@ func main() {
 func parseFlags() *config.Config {
 	cfg := config.New()
 
+	// Config file flag (parsed early to load file config before other flags)
+	var configFile string
+	flag.StringVar(&configFile, "config", "", "Path to configuration file (default: auto-discover .ralph.yaml, .ralph.json)")
+
 	flag.StringVar(&cfg.PlanFile, "plan", config.DefaultPlanFile, "Path to the plan file (e.g., plan.json)")
 	flag.StringVar(&cfg.ProgressFile, "progress", config.DefaultProgressFile, "Path to the progress file (e.g., progress.txt)")
 	flag.IntVar(&cfg.Iterations, "iterations", 0, "Number of iterations to run (required)")
@@ -107,10 +111,28 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  go      - go build ./... / go test ./...\n")
 		fmt.Fprintf(os.Stderr, "  python  - mypy . / pytest\n")
 		fmt.Fprintf(os.Stderr, "  auto    - Auto-detect from project files\n")
+		fmt.Fprintf(os.Stderr, "\nConfiguration File:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph automatically discovers config files in this order:\n")
+		fmt.Fprintf(os.Stderr, "    1. Current directory: .ralph.yaml, .ralph.yml, .ralph.json,\n")
+		fmt.Fprintf(os.Stderr, "       ralph.config.yaml, ralph.config.yml, ralph.config.json\n")
+		fmt.Fprintf(os.Stderr, "    2. Home directory: same file names\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Config file format (YAML example):\n")
+		fmt.Fprintf(os.Stderr, "    agent: cursor-agent\n")
+		fmt.Fprintf(os.Stderr, "    build_system: go\n")
+		fmt.Fprintf(os.Stderr, "    typecheck: go build ./...\n")
+		fmt.Fprintf(os.Stderr, "    test: go test ./...\n")
+		fmt.Fprintf(os.Stderr, "    plan: plan.json\n")
+		fmt.Fprintf(os.Stderr, "    progress: progress.txt\n")
+		fmt.Fprintf(os.Stderr, "    iterations: 5\n")
+		fmt.Fprintf(os.Stderr, "    verbose: true\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Priority: CLI flags > config file > defaults\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -build-system gradle  # Use Gradle preset\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -config my-config.yaml           # Use specific config file\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -status                          # Show plan status\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-tested                     # List tested features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-untested                   # List untested features\n", os.Args[0])
@@ -120,10 +142,89 @@ func parseFlags() *config.Config {
 
 	flag.Parse()
 
+	// Load configuration file (if specified or auto-discovered)
+	cfg.ConfigFile = configFile
+	loadConfigFile(cfg)
+
 	// Apply build system configuration
 	detection.ApplyBuildSystemConfig(cfg)
 
 	return cfg
+}
+
+// loadConfigFile loads and applies configuration from a file.
+// Priority: CLI flags > config file > defaults
+func loadConfigFile(cfg *config.Config) {
+	var configPath string
+
+	if cfg.ConfigFile != "" {
+		// Explicit config file specified
+		configPath = cfg.ConfigFile
+	} else {
+		// Auto-discover config file
+		configPath = config.DiscoverConfigFile()
+	}
+
+	if configPath == "" {
+		return
+	}
+
+	// Store which flags were explicitly set on command line
+	explicitFlags := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) {
+		explicitFlags[f.Name] = true
+	})
+
+	fileCfg, err := config.LoadConfigFile(configPath)
+	if err != nil {
+		if cfg.ConfigFile != "" {
+			// Only warn if config file was explicitly specified
+			fmt.Fprintf(os.Stderr, "Warning: failed to load config file %s: %v\n", configPath, err)
+		}
+		return
+	}
+
+	// Validate config file
+	if err := config.ValidateFileConfig(fileCfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: invalid config file %s: %v\n", configPath, err)
+		return
+	}
+
+	// Apply file config, but only for values not explicitly set via CLI
+	applyFileConfigWithPrecedence(cfg, fileCfg, explicitFlags)
+
+	if cfg.Verbose {
+		fmt.Printf("Loaded configuration from: %s\n", configPath)
+	}
+}
+
+// applyFileConfigWithPrecedence applies file config values only when
+// the corresponding CLI flag was not explicitly set.
+func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfig, explicitFlags map[string]bool) {
+	if fileCfg.Agent != "" && !explicitFlags["agent"] {
+		cfg.AgentCmd = fileCfg.Agent
+	}
+	if fileCfg.BuildSystem != "" && !explicitFlags["build-system"] {
+		cfg.BuildSystem = fileCfg.BuildSystem
+	}
+	if fileCfg.TypeCheck != "" && !explicitFlags["typecheck"] {
+		cfg.TypeCheckCmd = fileCfg.TypeCheck
+	}
+	if fileCfg.Test != "" && !explicitFlags["test"] {
+		cfg.TestCmd = fileCfg.Test
+	}
+	if fileCfg.Plan != "" && !explicitFlags["plan"] {
+		cfg.PlanFile = fileCfg.Plan
+	}
+	if fileCfg.Progress != "" && !explicitFlags["progress"] {
+		cfg.ProgressFile = fileCfg.Progress
+	}
+	if fileCfg.Iterations > 0 && !explicitFlags["iterations"] {
+		cfg.Iterations = fileCfg.Iterations
+	}
+	if fileCfg.Verbose && !explicitFlags["verbose"] && !explicitFlags["v"] {
+		cfg.Verbose = fileCfg.Verbose
+	}
 }
 
 func validateConfig(cfg *config.Config) error {

@@ -128,6 +128,8 @@ Options:
         Command name for the AI agent CLI tool (default "cursor-agent")
   -build-system string
         Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection
+  -config string
+        Path to configuration file (default: auto-discover .ralph.yaml, .ralph.json)
   -generate-plan
         Generate plan.json from notes file
   -iterations int
@@ -194,6 +196,101 @@ ralph -iterations 5 -build-system auto
 
 # Override individual commands
 ralph -iterations 5 -build-system gradle -test "./gradlew test --tests MyTest"
+```
+
+## Configuration File
+
+Ralph supports persistent configuration through YAML or JSON configuration files. This allows you to set default options for your project without specifying them on every command.
+
+### Supported File Names
+
+Ralph automatically discovers configuration files in the following order:
+
+1. **Current directory** (first found wins):
+   - `.ralph.yaml`
+   - `.ralph.yml`
+   - `.ralph.json`
+   - `ralph.config.yaml`
+   - `ralph.config.yml`
+   - `ralph.config.json`
+
+2. **Home directory** (same file names as above)
+
+### Configuration Options
+
+All configuration options are optional. Only specify the settings you want to customize.
+
+**YAML Format (`.ralph.yaml`):**
+```yaml
+# AI agent command
+agent: cursor-agent
+
+# Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python, auto)
+build_system: go
+
+# Custom commands (override build system preset)
+typecheck: go build ./...
+test: go test -v ./...
+
+# File paths
+plan: plan.json
+progress: progress.txt
+
+# Execution settings
+iterations: 5
+verbose: true
+```
+
+**JSON Format (`.ralph.json`):**
+```json
+{
+  "agent": "cursor-agent",
+  "build_system": "go",
+  "typecheck": "go build ./...",
+  "test": "go test -v ./...",
+  "plan": "plan.json",
+  "progress": "progress.txt",
+  "iterations": 5,
+  "verbose": true
+}
+```
+
+### Configuration Precedence
+
+Configuration values are applied in the following order (later values override earlier ones):
+
+1. **Defaults** - Built-in default values
+2. **Config file** - Values from auto-discovered or specified config file
+3. **CLI flags** - Command-line arguments always take highest precedence
+
+This means you can set project defaults in a config file and override specific values on the command line when needed.
+
+### Examples
+
+**Basic project configuration:**
+```yaml
+# .ralph.yaml
+build_system: go
+iterations: 3
+```
+
+**Full configuration for a Node.js project:**
+```yaml
+# .ralph.yaml
+agent: cursor-agent
+build_system: pnpm
+plan: tasks/plan.json
+progress: tasks/progress.txt
+verbose: true
+```
+
+**Using a custom config file:**
+```bash
+# Use a specific config file
+ralph -config production.yaml -iterations 10
+
+# Override config file settings
+ralph -iterations 1 -verbose  # Uses config file but overrides these values
 ```
 
 ## Plan File Format

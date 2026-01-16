@@ -67,3 +67,51 @@ ralph/
 - The main package orchestrates all internal packages
 - Consider adding package-level tests in each internal package for better isolation
 - Future features should follow the package-per-concern pattern established here
+
+## 2026-01-16: YAML/JSON Configuration File Support (Feature #3)
+
+### Completed
+- Created `internal/config/file.go` with:
+  - `FileConfig` struct with fields for all configurable settings
+  - `ConfigFileNames` slice defining supported file names in precedence order
+  - `DiscoverConfigFile()` function for auto-discovery in current and home directories
+  - `LoadConfigFile()` function supporting both YAML and JSON formats
+  - `ValidateFileConfig()` function for config validation
+  - `ApplyFileConfig()` function for merging file config with Config struct
+- Supported configuration file names (in precedence order):
+  - `.ralph.yaml`, `.ralph.yml`, `.ralph.json`
+  - `ralph.config.yaml`, `ralph.config.yml`, `ralph.config.json`
+- Added `-config` flag to specify custom config file path
+- Implemented config precedence: defaults < config file < CLI flags
+- Added `gopkg.in/yaml.v3` dependency for YAML parsing
+- Created comprehensive test suite in `internal/config/file_test.go`:
+  - 15+ test cases covering discovery, loading, validation, and merging
+  - Tests for YAML and JSON formats
+  - Tests for precedence and partial configs
+  - Tests for error handling (invalid files, missing files)
+- Updated README.md with:
+  - New "Configuration File" section with full documentation
+  - Config file format examples (YAML and JSON)
+  - Precedence explanation
+  - Usage examples
+  - Added `-config` flag to CLI options
+
+### Configuration Options
+```yaml
+agent: cursor-agent        # AI agent command
+build_system: go           # Build system preset
+typecheck: go build ./...  # Type check command
+test: go test ./...        # Test command
+plan: plan.json            # Plan file path
+progress: progress.txt     # Progress file path
+iterations: 5              # Number of iterations
+verbose: true              # Verbose output
+```
+
+### Notes for Next Developer
+- Config file loading happens before build system detection in parseFlags()
+- CLI flags always take precedence over config file values (tracked via flag.Visit)
+- Empty/zero values in config file are ignored (won't override defaults)
+- The FileConfig struct uses omitempty tags for clean serialization
+- Consider adding environment variable support in a future iteration
+- The config package is now a good foundation for future features like #4 (Environment-Aware Execution)
