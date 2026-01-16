@@ -156,7 +156,7 @@
             "Document memory system in README"
         ],
         "expected_output": "Ralph remembers architectural decisions and conventions across runs, reducing repetitive guidance and maintaining consistency",
-        "tested": false
+        "tested": true
     },
     {
         "id": 9,

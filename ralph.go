@@ -13,6 +13,7 @@ import (
 	"github.com/logimos/ralph/internal/config"
 	"github.com/logimos/ralph/internal/detection"
 	"github.com/logimos/ralph/internal/environment"
+	"github.com/logimos/ralph/internal/memory"
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
@@ -40,6 +41,15 @@ func main() {
 			os.Exit(1)
 		}
 		if err := generatePlanFromNotes(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Handle memory commands (don't require iterations or plan file)
+	if cfg.ShowMemory || cfg.ClearMemory || cfg.AddMemory != "" {
+		if err := handleMemoryCommands(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -102,6 +112,12 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.Quiet, "q", false, "Minimal output (shorthand for -quiet)")
 	flag.BoolVar(&cfg.JSONOutput, "json-output", false, "Machine-readable JSON output")
 	flag.StringVar(&cfg.LogLevel, "log-level", config.DefaultLogLevel, "Log level: debug, info, warn, error")
+	// Memory-related flags
+	flag.StringVar(&cfg.MemoryFile, "memory-file", config.DefaultMemoryFile, "Path to memory file")
+	flag.BoolVar(&cfg.ShowMemory, "show-memory", false, "Display stored memories")
+	flag.BoolVar(&cfg.ClearMemory, "clear-memory", false, "Clear all stored memories")
+	flag.StringVar(&cfg.AddMemory, "add-memory", "", "Add a memory entry (format: type:content where type is decision, convention, tradeoff, or context)")
+	flag.IntVar(&cfg.MemoryRetention, "memory-retention", config.DefaultMemoryRetention, "Days to retain memories (default: 90)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -158,6 +174,18 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  -quiet, -q     Minimal output (errors only)\n")
 		fmt.Fprintf(os.Stderr, "  -json-output   Machine-readable JSON output\n")
 		fmt.Fprintf(os.Stderr, "  -log-level     Log verbosity: debug, info, warn, error (default: info)\n")
+		fmt.Fprintf(os.Stderr, "\nMemory System:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph remembers architectural decisions and conventions across sessions.\n")
+		fmt.Fprintf(os.Stderr, "  Memories are stored in %s (configurable with -memory-file).\n", config.DefaultMemoryFile)
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Memory types:\n")
+		fmt.Fprintf(os.Stderr, "    decision   - Architectural choices (e.g., 'Use PostgreSQL for persistence')\n")
+		fmt.Fprintf(os.Stderr, "    convention - Coding standards (e.g., 'Use snake_case for database columns')\n")
+		fmt.Fprintf(os.Stderr, "    tradeoff   - Accepted compromises (e.g., 'Sacrifice type safety for performance')\n")
+		fmt.Fprintf(os.Stderr, "    context    - Project knowledge (e.g., 'Main service is in cmd/server')\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  AI agents can create memories using markers in their output:\n")
+		fmt.Fprintf(os.Stderr, "    [REMEMBER:DECISION]Use PostgreSQL for all persistence[/REMEMBER]\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -168,6 +196,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -list-untested                   # List untested features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -generate-plan -notes notes.md   # Generate plan.json from notes\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -generate-plan -notes notes.md -output my-plan.json  # Custom output file\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -show-memory                     # Display stored memories\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -add-memory \"decision:Use PostgreSQL for persistence\"  # Add a memory\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -clear-memory                    # Clear all memories\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -277,6 +308,13 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.LogLevel != "" && !explicitFlags["log-level"] {
 		cfg.LogLevel = fileCfg.LogLevel
 	}
+	// Memory settings
+	if fileCfg.MemoryFile != "" && !explicitFlags["memory-file"] {
+		cfg.MemoryFile = fileCfg.MemoryFile
+	}
+	if fileCfg.MemoryRetention > 0 && !explicitFlags["memory-retention"] {
+		cfg.MemoryRetention = fileCfg.MemoryRetention
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -365,12 +403,28 @@ func runIterations(cfg *config.Config) error {
 		// Keep colors in CI for modern terminals that support it
 	}
 
+	// Load memory store
+	memStore := memory.NewStore(cfg.MemoryFile)
+	memStore.SetRetentionDays(cfg.MemoryRetention)
+	if err := memStore.Load(); err != nil {
+		output.Warn("Failed to load memory: %v", err)
+	}
+
+	// Prune expired memories
+	pruned, _ := memStore.Prune()
+	if pruned > 0 && cfg.Verbose {
+		output.Debug("Pruned %d expired memories", pruned)
+	}
+
 	output.Header("Ralph - Iterative Development Workflow")
 	output.Info("Plan file: %s", cfg.PlanFile)
 	output.Info("Progress file: %s", cfg.ProgressFile)
 	output.Info("Iterations: %d", cfg.Iterations)
 	output.Info("Agent command: %s", cfg.AgentCmd)
 	output.Info("Recovery strategy: %s (max %d retries)", cfg.RecoveryStrategy, cfg.MaxRetries)
+	if memStore.Count() > 0 {
+		output.Info("Memory: %d entries loaded from %s", memStore.Count(), cfg.MemoryFile)
+	}
 	
 	if cfg.Verbose {
 		output.Debug("Type check command: %s", cfg.TypeCheckCmd)
@@ -410,6 +464,14 @@ func runIterations(cfg *config.Config) error {
 
 		// Build the prompt for the AI agent, including any recovery guidance
 		iterPrompt := prompt.BuildIterationPrompt(cfg)
+		
+		// Inject memory context (relevant memories based on current feature category)
+		// Note: category could be extracted from the plan in a future enhancement
+		memoryContext := memStore.BuildPromptContext("", 10) // Get top 10 relevant memories
+		if memoryContext != "" {
+			iterPrompt = memoryContext + iterPrompt
+		}
+		
 		if additionalPromptGuidance != "" {
 			iterPrompt = additionalPromptGuidance + "\n\n" + iterPrompt
 			additionalPromptGuidance = "" // Clear after use
@@ -437,6 +499,12 @@ func runIterations(cfg *config.Config) error {
 		// Print the agent output
 		if result != "" {
 			output.Print("%s", result)
+		}
+
+		// Extract and store any memories from the agent output
+		memoriesStored := extractAndStoreMemories(memStore, result, "")
+		if memoriesStored > 0 && cfg.Verbose {
+			output.Debug("Extracted and stored %d new memories from agent output", memoriesStored)
 		}
 
 		// Check for completion signal (even if there was an error, the output might contain it)
@@ -500,6 +568,13 @@ func runIterations(cfg *config.Config) error {
 	summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
 	output.PrintSummary(summary)
 	printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
+	
+	// Print memory summary if we have memories
+	if memStore.Count() > 0 && cfg.Verbose {
+		output.SubHeader("Memory Status")
+		output.Print("Total memories: %d (stored in %s)", memStore.Count(), cfg.MemoryFile)
+	}
+	
 	return nil
 }
 
@@ -653,4 +728,77 @@ func appendProgress(path string, message string) error {
 	}
 
 	return nil
+}
+
+// handleMemoryCommands processes memory-related CLI commands
+func handleMemoryCommands(cfg *config.Config) error {
+	store := memory.NewStore(cfg.MemoryFile)
+	store.SetRetentionDays(cfg.MemoryRetention)
+
+	if err := store.Load(); err != nil {
+		return fmt.Errorf("failed to load memory: %w", err)
+	}
+
+	// Handle clear memory command
+	if cfg.ClearMemory {
+		if err := store.Clear(); err != nil {
+			return fmt.Errorf("failed to clear memory: %w", err)
+		}
+		fmt.Printf("Memory cleared: %s\n", cfg.MemoryFile)
+		return nil
+	}
+
+	// Handle add memory command
+	if cfg.AddMemory != "" {
+		parts := strings.SplitN(cfg.AddMemory, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid add-memory format: expected 'type:content' (e.g., 'decision:Use PostgreSQL')")
+		}
+
+		entryType, err := memory.ParseEntryType(parts[0])
+		if err != nil {
+			return err
+		}
+
+		entry, err := store.Add(entryType, parts[1], "", "user")
+		if err != nil {
+			return fmt.Errorf("failed to add memory: %w", err)
+		}
+
+		fmt.Printf("Memory added: [%s] %s\n", strings.ToUpper(string(entry.Type)), entry.Content)
+		return nil
+	}
+
+	// Handle show memory command (default if no other memory command)
+	if cfg.ShowMemory {
+		// Prune old memories first
+		pruned, _ := store.Prune()
+		if pruned > 0 {
+			fmt.Printf("Pruned %d expired memories\n\n", pruned)
+		}
+
+		fmt.Println(store.Summary())
+		return nil
+	}
+
+	return nil
+}
+
+// extractAndStoreMemories extracts memories from agent output and stores them
+func extractAndStoreMemories(store *memory.Store, output, category string) int {
+	entries := memory.ExtractFromOutput(output)
+	if len(entries) == 0 {
+		return 0
+	}
+
+	stored := 0
+	for _, e := range entries {
+		e.Category = category
+		_, err := store.Add(e.Type, e.Content, category, "agent")
+		if err == nil {
+			stored++
+		}
+	}
+
+	return stored
 }

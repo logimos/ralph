@@ -13,6 +13,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Completion Detection**: Automatically detects when all work is complete
 - **Failure Recovery**: Automatically handles failures with configurable recovery strategies
 - **Environment Detection**: Automatically adapts to CI and local environments
+- **Long-Running Memory**: Remembers architectural decisions and conventions across sessions
 
 ## Installation
 
@@ -172,6 +173,18 @@ Options:
         Enable verbose output
   -version
         Show version information and exit
+
+Memory Options:
+  -show-memory
+        Display stored memories
+  -clear-memory
+        Clear all stored memories
+  -add-memory string
+        Add a memory entry (format: type:content)
+  -memory-file string
+        Path to memory file (default ".ralph-memory.json")
+  -memory-retention int
+        Days to retain memories (default: 90)
 ```
 
 ### Output Options
@@ -591,6 +604,123 @@ Ralph automatically detects non-TTY environments and adjusts output:
 - Disables colors when output is not a terminal
 - Disables spinners and progress bars in non-interactive mode
 - Enables verbose output by default in CI environments
+
+## Long-Running Goal Memory
+
+Ralph includes a persistent memory system that remembers architectural decisions, coding conventions, tradeoffs, and project context across sessions. This reduces repetitive guidance and maintains consistency throughout your development workflow.
+
+### Memory Types
+
+| Type | Description | Examples |
+|------|-------------|----------|
+| `decision` | Architectural choices | "Use PostgreSQL for persistence", "Prefer composition over inheritance" |
+| `convention` | Coding standards | "Use snake_case for database columns", "All errors must be wrapped" |
+| `tradeoff` | Accepted compromises | "Sacrificed type safety for performance in hot path" |
+| `context` | Project knowledge | "Main service is in cmd/server", "Config loaded from environment" |
+
+### Memory File
+
+Memories are stored in `.ralph-memory.json` (configurable with `-memory-file`). The file is automatically created when memories are first added.
+
+**Example memory file:**
+```json
+{
+  "entries": [
+    {
+      "id": "mem_1705420800123456789",
+      "type": "decision",
+      "content": "Use PostgreSQL for all persistence needs",
+      "category": "infra",
+      "created_at": "2026-01-16T12:00:00Z",
+      "updated_at": "2026-01-16T12:00:00Z",
+      "source": "agent"
+    }
+  ],
+  "last_updated": "2026-01-16T12:00:00Z",
+  "retention_days": 90
+}
+```
+
+### AI Agent Memory Extraction
+
+AI agents can create memories by including markers in their output:
+
+```
+[REMEMBER:DECISION]Use PostgreSQL for all persistence needs[/REMEMBER]
+[REMEMBER:CONVENTION]Use snake_case for all database column names[/REMEMBER]
+[REMEMBER:TRADEOFF]Opted for eventual consistency to improve performance[/REMEMBER]
+[REMEMBER:CONTEXT]The main API is served from cmd/api/main.go[/REMEMBER]
+```
+
+Ralph automatically extracts these markers from agent output and stores them in the memory file.
+
+### Memory Injection
+
+During iterations, Ralph injects relevant memories into the agent prompt as context:
+
+```
+[MEMORY CONTEXT - Previous decisions and conventions to follow:]
+- [DECISION] Use PostgreSQL for all persistence needs
+- [CONVENTION] Use snake_case for all database column names
+[END MEMORY CONTEXT]
+```
+
+Memories are ranked by relevance based on:
+- **Type weight**: Decisions and conventions ranked higher than context
+- **Category match**: Entries matching the current feature's category get priority
+- **Recency**: Recently updated memories ranked higher
+
+### Memory Commands
+
+```bash
+# Display all stored memories
+ralph -show-memory
+
+# Add a memory manually
+ralph -add-memory "decision:Use PostgreSQL for persistence"
+ralph -add-memory "convention:All exported functions must have comments"
+
+# Clear all memories
+ralph -clear-memory
+
+# Use a custom memory file
+ralph -iterations 5 -memory-file project-memory.json
+
+# Set memory retention period (days)
+ralph -iterations 5 -memory-retention 30
+```
+
+### Configuration
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+memory_file: .ralph-memory.json
+memory_retention: 90  # Days to keep memories (default: 90)
+```
+
+### Memory Retention
+
+Memories older than the retention period (default: 90 days) are automatically pruned at the start of each run. This ensures the memory file doesn't grow indefinitely while keeping recent, relevant information.
+
+### Example Workflow
+
+1. **First run** - Agent makes architectural decisions:
+   ```
+   Agent output: "Setting up the database layer.
+   [REMEMBER:DECISION]Use PostgreSQL with pgx driver for all database operations[/REMEMBER]
+   [REMEMBER:CONVENTION]All database queries go through repository pattern[/REMEMBER]"
+   ```
+
+2. **Subsequent runs** - Agent receives context:
+   ```
+   [MEMORY CONTEXT]
+   - [DECISION] Use PostgreSQL with pgx driver for all database operations
+   - [CONVENTION] All database queries go through repository pattern
+   [END MEMORY CONTEXT]
+   ```
+
+3. **Result**: Agent maintains consistency without needing repeated instructions
 
 ## Plan File Format
 

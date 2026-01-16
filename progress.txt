@@ -297,3 +297,84 @@ log_level: info      # Log level: debug, info, warn, error
 - Progress bar includes ETA calculation based on elapsed time per iteration
 - Table output auto-calculates column widths based on content
 - Consider adding `-progress` flag to show progress bar during iterations in future
+
+## 2026-01-16: Long-Running Goal Memory (Feature #8)
+
+### Completed
+- Created `internal/memory` package with comprehensive memory management:
+  - `memory.go` - Store struct, Entry types, file operations, memory extraction/injection
+  - `memory_test.go` - 30+ tests covering all memory functionality
+- Implemented memory entry types:
+  - `decision` - Architectural choices (e.g., "Use PostgreSQL for persistence")
+  - `convention` - Coding standards (e.g., "Use snake_case for database columns")
+  - `tradeoff` - Accepted compromises (e.g., "Sacrificed type safety for performance")
+  - `context` - Project knowledge (e.g., "Main service is in cmd/server")
+- Implemented memory file operations:
+  - `NewStore()` - Create memory store with configurable path
+  - `Load()` / `Save()` - Persist memories to `.ralph-memory.json`
+  - `Add()` - Add new memory entries
+  - `Clear()` - Remove all memories
+  - `Prune()` - Remove entries older than retention period
+- Implemented memory extraction from agent output:
+  - Parses `[REMEMBER:TYPE]...[/REMEMBER]` markers
+  - Supports DECISION, CONVENTION, TRADEOFF, CONTEXT types
+  - Auto-saves extracted memories with "agent" source tag
+- Implemented memory injection into prompts:
+  - `BuildPromptContext()` creates formatted memory context
+  - Relevance scoring based on type, category match, and recency
+  - Configurable max entries for context injection
+- Added CLI flags:
+  - `-show-memory` - Display all stored memories
+  - `-clear-memory` - Clear all memories
+  - `-add-memory "type:content"` - Add memory manually
+  - `-memory-file` - Custom memory file path
+  - `-memory-retention` - Days to retain memories (default: 90)
+- Added config file support: `memory_file` and `memory_retention` fields
+- Integrated memory into `runIterations()`:
+  - Loads memory at start, prunes expired entries
+  - Injects memory context into prompts
+  - Extracts memories from agent output
+  - Shows memory count in verbose output
+- Updated README.md with comprehensive memory documentation:
+  - Memory types and usage
+  - AI agent memory markers
+  - CLI commands and configuration
+  - Example workflow
+
+### Package Structure
+```
+internal/memory/
+├── memory.go      # Store, Entry types, file ops, extraction, injection
+└── memory_test.go # 30+ tests covering all functionality
+```
+
+### Memory File Format
+```json
+{
+  "entries": [
+    {
+      "id": "mem_1705420800123456789",
+      "type": "decision",
+      "content": "Use PostgreSQL for persistence",
+      "category": "infra",
+      "created_at": "2026-01-16T12:00:00Z",
+      "updated_at": "2026-01-16T12:00:00Z",
+      "source": "agent"
+    }
+  ],
+  "last_updated": "2026-01-16T12:00:00Z",
+  "retention_days": 90
+}
+```
+
+### Notes for Next Developer
+- Memory is automatically loaded at the start of `runIterations()`
+- Memories are extracted from agent output using regex pattern `\[REMEMBER:([A-Z]+)\](.*?)\[/REMEMBER\]`
+- Memory context is injected before the iteration prompt, not after
+- Relevance scoring prioritizes: category match (+5), decisions/conventions (+3), recency (+2)
+- Pruning happens at start of each run - configurable via `-memory-retention` flag
+- Memory commands (`-show-memory`, `-clear-memory`, `-add-memory`) exit early without needing plan file
+- Consider adding memory search/filter functionality in future iterations
+- Consider adding memory export/import for team sharing
+- The memory package is independent and could be used by other features
+

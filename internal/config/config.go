@@ -14,6 +14,10 @@ const (
 	DefaultRecoveryStrategy = "retry"
 	// DefaultLogLevel is the default logging level
 	DefaultLogLevel = "info"
+	// DefaultMemoryFile is the default path for the memory file
+	DefaultMemoryFile = ".ralph-memory.json"
+	// DefaultMemoryRetention is the default number of days to retain memories
+	DefaultMemoryRetention = 90
 )
 
 // Config holds the application configuration
@@ -42,6 +46,12 @@ type Config struct {
 	Quiet      bool   // Minimal output (errors only)
 	JSONOutput bool   // Machine-readable JSON output
 	LogLevel   string // Log level: debug, info, warn, error
+	// Memory-related configuration
+	MemoryFile     string // Path to memory file (default: .ralph-memory.json)
+	ShowMemory     bool   // Display stored memories
+	ClearMemory    bool   // Clear all memories
+	AddMemory      string // Add a manual memory entry (format: "type:content")
+	MemoryRetention int   // Number of days to retain memories (default: 90)
 }
 
 // New creates a new Config with default values
@@ -54,5 +64,7 @@ func New() *Config {
 		MaxRetries:       DefaultMaxRetries,
 		RecoveryStrategy: DefaultRecoveryStrategy,
 		LogLevel:         DefaultLogLevel,
+		MemoryFile:       DefaultMemoryFile,
+		MemoryRetention:  DefaultMemoryRetention,
 	}
 }

@@ -53,6 +53,10 @@ type FileConfig struct {
 	Quiet      bool   `json:"quiet,omitempty" yaml:"quiet,omitempty"`
 	JSONOutput bool   `json:"json_output,omitempty" yaml:"json_output,omitempty"`
 	LogLevel   string `json:"log_level,omitempty" yaml:"log_level,omitempty"`
+
+	// Memory settings
+	MemoryFile      string `json:"memory_file,omitempty" yaml:"memory_file,omitempty"`
+	MemoryRetention int    `json:"memory_retention,omitempty" yaml:"memory_retention,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -206,6 +210,11 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return fmt.Errorf("invalid log_level %q: must be one of debug, info, warn, error, or quiet", cfg.LogLevel)
 	}
 
+	// Validate memory retention if specified
+	if cfg.MemoryRetention < 0 {
+		return fmt.Errorf("memory_retention cannot be negative")
+	}
+
 	return nil
 }
 
@@ -273,5 +282,13 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.LogLevel != "" && cfg.LogLevel == DefaultLogLevel {
 		cfg.LogLevel = fileCfg.LogLevel
+	}
+
+	// Apply memory settings
+	if fileCfg.MemoryFile != "" && cfg.MemoryFile == DefaultMemoryFile {
+		cfg.MemoryFile = fileCfg.MemoryFile
+	}
+	if fileCfg.MemoryRetention > 0 && cfg.MemoryRetention == DefaultMemoryRetention {
+		cfg.MemoryRetention = fileCfg.MemoryRetention
 	}
 }
