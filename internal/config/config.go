@@ -34,6 +34,7 @@ type Config struct {
 	ConfigFile       string // Path to config file (if specified via -config flag)
 	MaxRetries       int    // Maximum retries per feature before recovery escalation
 	RecoveryStrategy string // Recovery strategy: retry, skip, rollback
+	Environment      string // Environment override (local, github-actions, gitlab-ci, etc.)
 }
 
 // New creates a new Config with default values

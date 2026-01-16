@@ -44,6 +44,9 @@ type FileConfig struct {
 	// Recovery settings
 	MaxRetries       int    `json:"max_retries,omitempty" yaml:"max_retries,omitempty"`
 	RecoveryStrategy string `json:"recovery_strategy,omitempty" yaml:"recovery_strategy,omitempty"`
+
+	// Environment settings
+	Environment string `json:"environment,omitempty" yaml:"environment,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -159,6 +162,30 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return fmt.Errorf("invalid recovery_strategy %q: must be one of retry, skip, or rollback", cfg.RecoveryStrategy)
 	}
 
+	// Validate environment if specified
+	validEnvironments := map[string]bool{
+		"":               true, // empty is valid (auto-detect)
+		"local":          true,
+		"github-actions": true,
+		"github":         true,
+		"gh":             true,
+		"gitlab-ci":      true,
+		"gitlab":         true,
+		"gl":             true,
+		"jenkins":        true,
+		"circleci":       true,
+		"circle":         true,
+		"travis-ci":      true,
+		"travis":         true,
+		"azure-devops":   true,
+		"azure":          true,
+		"ci":             true,
+	}
+
+	if !validEnvironments[cfg.Environment] {
+		return fmt.Errorf("invalid environment %q: must be one of local, github-actions, gitlab-ci, jenkins, circleci, travis-ci, azure-devops, or ci", cfg.Environment)
+	}
+
 	return nil
 }
 
@@ -207,5 +234,10 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.RecoveryStrategy != "" && cfg.RecoveryStrategy == DefaultRecoveryStrategy {
 		cfg.RecoveryStrategy = fileCfg.RecoveryStrategy
+	}
+
+	// Apply environment setting
+	if fileCfg.Environment != "" && cfg.Environment == "" {
+		cfg.Environment = fileCfg.Environment
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/logimos/ralph/internal/agent"
 	"github.com/logimos/ralph/internal/config"
 	"github.com/logimos/ralph/internal/detection"
+	"github.com/logimos/ralph/internal/environment"
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
@@ -93,6 +94,7 @@ func parseFlags() *config.Config {
 	flag.StringVar(&cfg.OutputPlanFile, "output", config.DefaultPlanFile, "Output plan file path (default: plan.json)")
 	flag.IntVar(&cfg.MaxRetries, "max-retries", config.DefaultMaxRetries, "Maximum retries per feature before escalation (default: 3)")
 	flag.StringVar(&cfg.RecoveryStrategy, "recovery-strategy", config.DefaultRecoveryStrategy, "Recovery strategy: retry, skip, rollback (default: retry)")
+	flag.StringVar(&cfg.Environment, "environment", "", "Override detected environment (local, github-actions, gitlab-ci, jenkins, circleci, ci)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -135,6 +137,15 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  retry    - Retry the feature with enhanced guidance (default)\n")
 		fmt.Fprintf(os.Stderr, "  skip     - Skip the feature and move to the next one\n")
 		fmt.Fprintf(os.Stderr, "  rollback - Revert changes via git and retry fresh\n")
+		fmt.Fprintf(os.Stderr, "\nEnvironment Detection:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph automatically detects the execution environment and adapts:\n")
+		fmt.Fprintf(os.Stderr, "  - CI environments: longer timeouts, verbose output by default\n")
+		fmt.Fprintf(os.Stderr, "  - Local: shorter timeouts, optimized for interactive use\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Supported CI providers (auto-detected):\n")
+		fmt.Fprintf(os.Stderr, "    github-actions, gitlab-ci, jenkins, circleci, travis-ci, azure-devops\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Override with -environment flag or config file.\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -238,6 +249,9 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.RecoveryStrategy != "" && !explicitFlags["recovery-strategy"] {
 		cfg.RecoveryStrategy = fileCfg.RecoveryStrategy
 	}
+	if fileCfg.Environment != "" && !explicitFlags["environment"] {
+		cfg.Environment = fileCfg.Environment
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -295,6 +309,20 @@ func validateConfig(cfg *config.Config) error {
 }
 
 func runIterations(cfg *config.Config) error {
+	// Detect environment
+	var envProfile *environment.EnvironmentProfile
+	if cfg.Environment != "" {
+		envType := environment.ParseEnvironmentType(cfg.Environment)
+		envProfile = environment.ForceEnvironment(envType)
+	} else {
+		envProfile = environment.Detect()
+	}
+
+	// Apply environment-based recommendations if not explicitly set
+	if !cfg.Verbose && envProfile.RecommendedVerbose {
+		cfg.Verbose = true
+	}
+
 	fmt.Printf("Starting iterative development workflow\n")
 	fmt.Printf("Plan file: %s\n", cfg.PlanFile)
 	fmt.Printf("Progress file: %s\n", cfg.ProgressFile)
@@ -304,6 +332,8 @@ func runIterations(cfg *config.Config) error {
 	if cfg.Verbose {
 		fmt.Printf("Type check command: %s\n", cfg.TypeCheckCmd)
 		fmt.Printf("Test command: %s\n", cfg.TestCmd)
+		fmt.Println()
+		fmt.Println(envProfile.Summary())
 	}
 	fmt.Println()
 

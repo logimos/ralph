@@ -12,6 +12,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Git Integration**: Creates commits for completed features
 - **Completion Detection**: Automatically detects when all work is complete
 - **Failure Recovery**: Automatically handles failures with configurable recovery strategies
+- **Environment Detection**: Automatically adapts to CI and local environments
 
 ## Installation
 
@@ -131,6 +132,8 @@ Options:
         Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection
   -config string
         Path to configuration file (default: auto-discover .ralph.yaml, .ralph.json)
+  -environment string
+        Override detected environment (local, github-actions, gitlab-ci, jenkins, circleci, ci)
   -generate-plan
         Generate plan.json from notes file
   -iterations int
@@ -298,6 +301,15 @@ max_retries: 5
 recovery_strategy: retry
 ```
 
+**Configuration with environment override:**
+```yaml
+# .ralph.yaml
+build_system: go
+iterations: 5
+environment: ci  # Force CI behavior for consistent builds
+verbose: true
+```
+
 **Using a custom config file:**
 ```bash
 # Use a specific config file
@@ -397,6 +409,79 @@ The `rollback` strategy uses git to revert changes:
 4. Returns to a clean state for retry
 
 **Note**: Rollback only reverts tracked file changes. Untracked files are preserved for safety.
+
+## Environment Detection
+
+Ralph automatically detects the execution environment and adapts its behavior accordingly. This ensures optimal performance in both local development and CI/CD pipelines.
+
+### Supported Environments
+
+| Environment | Detection | Adjustments |
+|-------------|-----------|-------------|
+| Local | Default (no CI vars) | Shorter timeouts, interactive output |
+| GitHub Actions | `GITHUB_ACTIONS` env var | Longer timeouts, verbose output |
+| GitLab CI | `GITLAB_CI` env var | Longer timeouts, verbose output |
+| Jenkins | `JENKINS_URL` env var | Longer timeouts, verbose output |
+| CircleCI | `CIRCLECI` env var | Longer timeouts, verbose output |
+| Travis CI | `TRAVIS` env var | Longer timeouts, verbose output |
+| Azure DevOps | `TF_BUILD` env var | Longer timeouts, verbose output |
+| Generic CI | `CI` env var | Longer timeouts, verbose output |
+
+### Automatic Adaptations
+
+When running in a CI environment, Ralph automatically:
+
+1. **Enables verbose output** - CI logs benefit from detailed information
+2. **Increases timeouts** - CI builds may run slower than local machines
+3. **Adjusts parallel hints** - Based on detected CPU cores
+
+### System Resources Detection
+
+Ralph detects:
+
+- **CPU cores** - Used to calculate parallel execution hints
+- **Available memory** - Detected from `/proc/meminfo` (Linux) or `sysctl` (macOS)
+- **Project complexity** - Based on file count (small: <100, medium: 100-1000, large: >1000 files)
+
+### Configuration
+
+**Override detected environment:**
+```bash
+# Force CI behavior locally
+ralph -iterations 5 -environment github-actions
+
+# Force local behavior in CI
+ralph -iterations 5 -environment local
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+environment: github-actions  # Force specific environment
+```
+
+**Supported environment values:**
+- `local` - Local development (default)
+- `github-actions` (or `github`, `gh`) - GitHub Actions
+- `gitlab-ci` (or `gitlab`, `gl`) - GitLab CI
+- `jenkins` - Jenkins
+- `circleci` (or `circle`) - CircleCI
+- `travis-ci` (or `travis`) - Travis CI
+- `azure-devops` (or `azure`) - Azure DevOps
+- `ci` - Generic CI environment
+
+### Verbose Output
+
+With `-verbose` flag (or in CI), Ralph displays environment information:
+
+```
+Environment: Local development
+  CPU cores: 8
+  Memory: 16.0 GB
+  Project complexity: medium (234 files)
+  Recommended timeout: 1m0s
+  Parallel hint: 7 workers
+```
 
 ## Plan File Format
 

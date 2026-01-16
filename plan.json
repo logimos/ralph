@@ -71,7 +71,7 @@
             "Add environment info to verbose output"
         ],
         "expected_output": "Ralph automatically detects and adapts to local dev, CI, and resource-constrained environments without manual configuration",
-        "tested": false
+        "tested": true
     },
     {
         "id": 5,

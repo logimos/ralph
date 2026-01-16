@@ -173,3 +173,61 @@ internal/recovery/
 - Consider adding SimplifyStrategy in future (break feature into sub-tasks)
 - The recovery package is independent and could be used by other features
 - Verbose output shows full recovery details, non-verbose shows summary only
+
+## 2026-01-16: Environment-Aware Execution (Feature #4)
+
+### Completed
+- Created `internal/environment` package with comprehensive environment detection:
+  - `environment.go` - EnvironmentProfile struct, detection logic, recommendations
+  - `environment_test.go` - 22 tests covering all CI providers and detection scenarios
+- Implemented CI environment detection via environment variables:
+  - GitHub Actions (`GITHUB_ACTIONS`)
+  - GitLab CI (`GITLAB_CI`)
+  - Jenkins (`JENKINS_URL`)
+  - CircleCI (`CIRCLECI`)
+  - Travis CI (`TRAVIS`)
+  - Azure DevOps (`TF_BUILD`)
+  - Generic CI (`CI`, `CONTINUOUS_INTEGRATION`, `BUILD_NUMBER`)
+- Implemented system resource detection:
+  - CPU cores via `runtime.NumCPU()`
+  - Memory detection from `/proc/meminfo` (Linux) or `sysctl` (macOS)
+  - Project complexity estimation based on file count (small/medium/large)
+- Implemented automatic execution adaptations:
+  - Longer timeouts in CI environments (120s vs 30s base)
+  - Timeout scaling based on project complexity (3x for large projects)
+  - Automatic verbose output in CI for better logging
+  - Parallel execution hints based on CPU cores (capped at 8)
+- Added `-environment` flag to override detected environment
+- Added `environment` field to config file support
+- Integrated into `runIterations()` to detect and display environment info
+- Updated README.md with comprehensive documentation
+- All 93+ tests passing (22 environment tests + existing tests)
+
+### Package Structure
+```
+internal/environment/
+├── environment.go      # EnvironmentProfile, Detect(), ForceEnvironment()
+└── environment_test.go # Tests for detection and recommendations
+```
+
+### EnvironmentProfile Fields
+- `Type` - Detected environment type (local, github-actions, gitlab-ci, etc.)
+- `CIEnvironment` - Boolean indicating if running in CI
+- `CIProvider` - Human-readable CI provider name
+- `CPUCores` - Number of CPU cores
+- `MemoryMB` - Available memory in MB
+- `FileCount` - Number of project files
+- `Complexity` - Project complexity (small/medium/large)
+- `RecommendedTimeout` - Suggested operation timeout
+- `RecommendedVerbose` - Whether verbose output is recommended
+- `ParallelHint` - Suggested parallel worker count
+
+### Notes for Next Developer
+- Environment detection happens in `runIterations()` before main execution
+- If `-environment` flag is set, `ForceEnvironment()` is used instead of `Detect()`
+- CI detection uses environment variables - no external commands needed
+- Memory detection is platform-specific (Linux/macOS supported, Windows returns 0)
+- File count excludes common directories (.git, node_modules, vendor, etc.)
+- The `IsCI()` method is available for other packages to check CI status
+- Environment profile is displayed in verbose output via `Summary()` method
+- Future enhancement: use RecommendedTimeout for actual timeout configuration
