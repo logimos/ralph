@@ -73,6 +73,11 @@ type FileConfig struct {
 
 	// Goal settings
 	GoalsFile string `json:"goals_file,omitempty" yaml:"goals_file,omitempty"` // Path to goals file
+
+	// Multi-agent settings
+	AgentsFile       string `json:"agents_file,omitempty" yaml:"agents_file,omitempty"`             // Path to multi-agent config file
+	ParallelAgents   int    `json:"parallel_agents,omitempty" yaml:"parallel_agents,omitempty"`     // Max parallel agents
+	EnableMultiAgent bool   `json:"enable_multi_agent,omitempty" yaml:"enable_multi_agent,omitempty"` // Enable multi-agent mode
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -263,6 +268,11 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		return fmt.Errorf("replan_threshold cannot be negative")
 	}
 
+	// Validate parallel agents if specified
+	if cfg.ParallelAgents < 0 {
+		return fmt.Errorf("parallel_agents cannot be negative")
+	}
+
 	return nil
 }
 
@@ -367,6 +377,17 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	// Apply goal settings
 	if fileCfg.GoalsFile != "" && cfg.GoalsFile == DefaultGoalsFile {
 		cfg.GoalsFile = fileCfg.GoalsFile
+	}
+
+	// Apply multi-agent settings
+	if fileCfg.AgentsFile != "" && cfg.AgentsFile == DefaultAgentsFile {
+		cfg.AgentsFile = fileCfg.AgentsFile
+	}
+	if fileCfg.ParallelAgents > 0 && cfg.ParallelAgents == DefaultParallelAgents {
+		cfg.ParallelAgents = fileCfg.ParallelAgents
+	}
+	if fileCfg.EnableMultiAgent && !cfg.EnableMultiAgent {
+		cfg.EnableMultiAgent = fileCfg.EnableMultiAgent
 	}
 }
 

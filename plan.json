@@ -272,7 +272,7 @@
             "Document multi-agent system in README"
         ],
         "expected_output": "Ralph can coordinate multiple AI agents (implementer, tester, reviewer) working in parallel to improve quality and speed",
-        "tested": false
+        "tested": true
     },
     {
         "id": 14,

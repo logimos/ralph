@@ -20,6 +20,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Smart Scope Control**: Iteration budgets and time limits to prevent over-building
 - **Adaptive Replanning**: Dynamically adjusts plans when tests fail repeatedly or requirements change
 - **Goal-Oriented Planning**: Define high-level goals and let AI decompose them into actionable plans
+- **Multi-Agent Collaboration**: Coordinate multiple AI agents (implementer, tester, reviewer, refactorer) working in parallel
 
 ## Installation
 
@@ -251,6 +252,16 @@ Goal Options:
         Decompose all pending goals into plan items
   -goals-file string
         Path to goals file (default "goals.json")
+
+Multi-Agent Options:
+  -multi-agent
+        Enable multi-agent collaboration mode
+  -agents string
+        Path to multi-agent configuration file (default "agents.json")
+  -parallel-agents int
+        Maximum number of agents to run in parallel (default: 2)
+  -list-agents
+        List configured agents
 ```
 
 ### Output Options
@@ -1936,6 +1947,223 @@ When adding a goal without an explicit category, Ralph infers it from the descri
 | Persistence | goals.json | plan.json |
 
 Use goals for project outcomes you want to achieve; use plans for specific tasks to implement.
+
+## Multi-Agent Collaboration
+
+Ralph supports multi-agent collaboration for parallel AI coordination. This enables multiple AI agents with different roles (implementer, tester, reviewer, refactorer) to work together on features, improving quality and development speed.
+
+### Agent Roles
+
+| Role | Description | Purpose |
+|------|-------------|---------|
+| `implementer` | Creates code and implements features | Primary development work |
+| `tester` | Validates code through tests | Test writing and validation |
+| `reviewer` | Checks code quality | Code review and suggestions |
+| `refactorer` | Improves existing code structure | Code cleanup and optimization |
+
+### Configuring Agents
+
+Create an `agents.json` file to configure multi-agent collaboration:
+
+```json
+{
+  "agents": [
+    {
+      "id": "impl-1",
+      "role": "implementer",
+      "command": "cursor-agent",
+      "specialization": "backend",
+      "priority": 10,
+      "enabled": true,
+      "prompt_prefix": "You are a backend developer. Focus on server-side code."
+    },
+    {
+      "id": "impl-2",
+      "role": "implementer",
+      "command": "cursor-agent",
+      "specialization": "frontend",
+      "priority": 10,
+      "enabled": true,
+      "prompt_prefix": "You are a frontend developer. Focus on UI components."
+    },
+    {
+      "id": "test-1",
+      "role": "tester",
+      "command": "cursor-agent",
+      "specialization": "testing",
+      "priority": 8,
+      "enabled": true,
+      "prompt_prefix": "You are a QA engineer. Write comprehensive tests."
+    },
+    {
+      "id": "review-1",
+      "role": "reviewer",
+      "command": "claude",
+      "specialization": "code quality",
+      "priority": 6,
+      "enabled": true,
+      "prompt_prefix": "You are a senior code reviewer. Check for best practices."
+    }
+  ],
+  "max_parallel": 2,
+  "conflict_resolution": "priority",
+  "context_file": ".ralph-multiagent-context.json"
+}
+```
+
+### Agent Configuration Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier for the agent |
+| `role` | Agent role: implementer, tester, reviewer, refactorer |
+| `command` | CLI command to execute (e.g., "cursor-agent", "claude") |
+| `specialization` | What this agent specializes in (e.g., "frontend", "backend") |
+| `priority` | Execution priority (higher = earlier in workflow) |
+| `enabled` | Whether this agent should be used |
+| `timeout` | Maximum execution time (e.g., "5m", "10m") |
+| `prompt_prefix` | Text prepended to all prompts for this agent |
+| `prompt_suffix` | Text appended to all prompts for this agent |
+
+### Multi-Agent Configuration
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `agents` | Array of agent configurations | Required |
+| `max_parallel` | Max agents running simultaneously | 2 |
+| `conflict_resolution` | How to resolve agent conflicts: priority, merge, vote | priority |
+| `context_file` | Shared context file path | .ralph-multiagent-context.json |
+
+### Conflict Resolution Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `priority` | Use highest priority agent's result | Clear hierarchy |
+| `merge` | Combine non-conflicting suggestions | Collaborative work |
+| `vote` | Majority wins for conflicting suggestions | Democratic decisions |
+
+### Multi-Agent Commands
+
+```bash
+# List configured agents
+ralph -list-agents
+
+# Enable multi-agent mode during iterations
+ralph -iterations 10 -multi-agent
+
+# Specify custom agents config file
+ralph -iterations 10 -multi-agent -agents custom-agents.json
+
+# Set max parallel agents
+ralph -iterations 10 -multi-agent -parallel-agents 4
+```
+
+### Multi-Agent Workflow
+
+When multi-agent mode is enabled, Ralph executes a coordinated workflow:
+
+1. **Implementation Stage**: Implementer agents create the code
+2. **Testing Stage**: Tester agents validate with tests
+3. **Review Stage**: Reviewer agents check code quality
+4. **Refactoring Stage** (optional): If review finds issues, refactorer agents improve the code
+
+Each stage runs agents in parallel (up to `max_parallel`), and results are aggregated before moving to the next stage.
+
+### Shared Context
+
+Agents communicate via a shared context file that tracks:
+- Current feature being worked on
+- Results from all agents
+- Inter-agent messages
+- Agreed-upon decisions
+
+```json
+{
+  "feature_id": 1,
+  "feature_description": "Add user authentication",
+  "iteration": 3,
+  "results": [
+    {
+      "agent_id": "impl-1",
+      "role": "implementer",
+      "status": "complete",
+      "output": "Implementation complete...",
+      "suggestions": ["Add error handling"],
+      "issues": []
+    }
+  ],
+  "messages": [],
+  "decisions": [],
+  "last_updated": "2026-01-16T12:00:00Z"
+}
+```
+
+### Health Monitoring
+
+Ralph monitors agent health during execution:
+- Tracks agent status (idle, running, complete, failed, timeout)
+- Detects stuck agents
+- Provides health status via internal API
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# List agents
+ralph -list-agents
+
+# Enable multi-agent mode
+ralph -iterations 10 -multi-agent
+
+# Custom agents file
+ralph -iterations 10 -multi-agent -agents my-agents.json
+
+# Set parallel limit
+ralph -iterations 10 -multi-agent -parallel-agents 4
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+agents_file: agents.json
+parallel_agents: 2
+enable_multi_agent: true
+```
+
+### Example Workflow
+
+1. **Create agents configuration:**
+   ```bash
+   # Create agents.json with your agent configurations
+   ralph -list-agents  # View help if no file exists
+   ```
+
+2. **Run with multi-agent mode:**
+   ```bash
+   ralph -iterations 10 -multi-agent -verbose
+   ```
+
+3. **Monitor progress:**
+   - Implementation stage completes first
+   - Testers validate the implementation
+   - Reviewers check code quality
+   - Refactorers improve based on feedback (if needed)
+
+4. **Review results:**
+   - Check `.ralph-multiagent-context.json` for detailed results
+   - Review suggestions and issues from all agents
+
+### Multi-Agent vs Single Agent
+
+| Aspect | Single Agent | Multi-Agent |
+|--------|--------------|-------------|
+| Execution | Sequential | Parallel stages |
+| Perspectives | One viewpoint | Multiple specialized viewpoints |
+| Quality | Agent-dependent | Cross-validated |
+| Speed | Limited by one agent | Parallelized within stages |
+| Complexity | Simple setup | Requires configuration |
+
+Use multi-agent for complex projects where quality and multiple perspectives are important. Use single agent for simple tasks or when resources are limited.
 
 ## Plan File Format
 

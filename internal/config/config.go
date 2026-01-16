@@ -30,6 +30,10 @@ const (
 	DefaultReplanThreshold = 3
 	// DefaultGoalsFile is the default path for the goals file
 	DefaultGoalsFile = "goals.json"
+	// DefaultAgentsFile is the default path for the multi-agent configuration file
+	DefaultAgentsFile = "agents.json"
+	// DefaultParallelAgents is the default max number of parallel agents
+	DefaultParallelAgents = 2
 )
 
 // Config holds the application configuration
@@ -94,6 +98,11 @@ type Config struct {
 	ListGoals     bool   // List all goals
 	DecomposeGoal string // Decompose a specific goal by ID
 	DecomposeAll  bool   // Decompose all pending goals
+	// Multi-agent configuration
+	AgentsFile     string // Path to multi-agent configuration file
+	ParallelAgents int    // Maximum number of agents to run in parallel
+	ListAgents     bool   // List configured agents
+	EnableMultiAgent bool // Enable multi-agent mode
 }
 
 // New creates a new Config with default values
@@ -114,5 +123,7 @@ func New() *Config {
 		ReplanStrategy:   DefaultReplanStrategy,
 		ReplanThreshold:  DefaultReplanThreshold,
 		GoalsFile:        DefaultGoalsFile,
+		AgentsFile:       DefaultAgentsFile,
+		ParallelAgents:   DefaultParallelAgents,
 	}
 }

@@ -912,3 +912,91 @@ internal/goals/
 - Consider adding goal estimation/deadline tracking
 - The goals package is independent and follows established package-per-concern pattern
 
+## 2026-01-16: Multi-Agent Collaboration (Feature #13)
+
+### Completed
+- Created `internal/multiagent` package with comprehensive multi-agent orchestration:
+  - `multiagent.go` - Core types, orchestration, parallel execution, conflict resolution
+  - `multiagent_test.go` - 25+ tests covering all functionality
+- Implemented agent role system:
+  - `implementer` - Creates code and implements features
+  - `tester` - Validates code through tests
+  - `reviewer` - Checks code quality and suggests improvements
+  - `refactorer` - Improves existing code structure
+- Implemented AgentConfig struct with fields:
+  - ID, Role, Command, Specialization, Priority, Timeout, Enabled
+  - PromptPrefix and PromptSuffix for agent-specific prompt customization
+- Implemented AgentOrchestrator for multi-agent coordination:
+  - Parallel execution with configurable concurrency (max_parallel)
+  - Workflow stages: implementation → testing → review → (optional) refactoring
+  - Context-based inter-agent communication
+- Implemented SharedContext for agent communication:
+  - Stores feature info, results, messages, and decisions
+  - Persists to JSON file for cross-agent access
+  - Thread-safe operations with mutex protection
+- Implemented conflict resolution strategies:
+  - `priority` - Use highest priority agent's result
+  - `merge` - Combine non-conflicting suggestions
+  - `vote` - Majority wins for conflicting suggestions
+- Implemented agent health monitoring:
+  - Tracks agent status (idle, running, complete, failed, timeout)
+  - Detects potentially stuck agents
+- Added CLI flags:
+  - `-multi-agent` - Enable multi-agent collaboration mode
+  - `-agents <path>` - Path to agents configuration file
+  - `-parallel-agents <n>` - Maximum parallel agents
+  - `-list-agents` - List configured agents
+- Added config file support: `agents_file`, `parallel_agents`, `enable_multi_agent` fields
+- Updated README.md with comprehensive multi-agent documentation:
+  - Agent roles and configuration
+  - Multi-agent workflow explanation
+  - Conflict resolution strategies
+  - Shared context documentation
+  - Configuration examples
+  - Usage examples
+- All 270+ tests passing (25+ multiagent tests + existing tests)
+
+### Package Structure
+```
+internal/multiagent/
+├── multiagent.go      # Core types, orchestration, parallel execution
+└── multiagent_test.go # 25+ tests covering all functionality
+```
+
+### Agent Configuration Format
+```json
+{
+  "agents": [
+    {
+      "id": "impl-1",
+      "role": "implementer",
+      "command": "cursor-agent",
+      "specialization": "backend",
+      "priority": 10,
+      "enabled": true
+    }
+  ],
+  "max_parallel": 2,
+  "conflict_resolution": "priority"
+}
+```
+
+### Multi-Agent Workflow
+1. **Implementation Stage**: Implementer agents create code (parallel)
+2. **Testing Stage**: Tester agents validate (parallel, depends on impl)
+3. **Review Stage**: Reviewer agents check quality (parallel, depends on impl)
+4. **Refactoring Stage**: If review finds issues, refactorer agents improve (optional)
+
+### Notes for Next Developer
+- Multi-agent mode is opt-in via `-multi-agent` flag or config
+- Agents are configured in `agents.json` (configurable path)
+- The orchestrator uses an AgentExecutor interface for testability
+- Default executor requires integration with the agent package
+- Shared context persists to `.ralph-multiagent-context.json`
+- Conflict resolution happens after each stage
+- Health monitoring detects agents running 2x their timeout
+- Workflow result includes detailed stage and agent results
+- Consider adding webhook support for external orchestration
+- Consider adding agent retry logic at the individual agent level
+- The multiagent package is independent and follows established package-per-concern pattern
+

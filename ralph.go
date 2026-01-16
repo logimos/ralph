@@ -17,6 +17,7 @@ import (
 	"github.com/logimos/ralph/internal/goals"
 	"github.com/logimos/ralph/internal/memory"
 	"github.com/logimos/ralph/internal/milestone"
+	"github.com/logimos/ralph/internal/multiagent"
 	"github.com/logimos/ralph/internal/nudge"
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
@@ -140,6 +141,15 @@ func main() {
 		return
 	}
 
+	// Handle multi-agent commands
+	if cfg.ListAgents {
+		if err := handleListAgents(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -219,6 +229,11 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.ListGoals, "list-goals", false, "List all goals")
 	flag.StringVar(&cfg.DecomposeGoal, "decompose-goal", "", "Decompose a specific goal by ID into plan items")
 	flag.BoolVar(&cfg.DecomposeAll, "decompose-all", false, "Decompose all pending goals into plan items")
+	// Multi-agent flags
+	flag.StringVar(&cfg.AgentsFile, "agents", config.DefaultAgentsFile, "Path to multi-agent configuration file")
+	flag.IntVar(&cfg.ParallelAgents, "parallel-agents", config.DefaultParallelAgents, "Maximum number of agents to run in parallel")
+	flag.BoolVar(&cfg.ListAgents, "list-agents", false, "List configured agents")
+	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Enable multi-agent collaboration mode")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -385,6 +400,30 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    -decompose-goal <id>      Decompose a specific goal into plan items\n")
 		fmt.Fprintf(os.Stderr, "    -decompose-all            Decompose all pending goals\n")
 		fmt.Fprintf(os.Stderr, "    -goals-file <path>        Use custom goals file\n")
+		fmt.Fprintf(os.Stderr, "\nMulti-Agent Collaboration:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph supports multi-agent collaboration for parallel AI coordination.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Agent roles:\n")
+		fmt.Fprintf(os.Stderr, "    implementer - Creates code and implements features\n")
+		fmt.Fprintf(os.Stderr, "    tester      - Validates code through tests\n")
+		fmt.Fprintf(os.Stderr, "    reviewer    - Checks code quality and suggests improvements\n")
+		fmt.Fprintf(os.Stderr, "    refactorer  - Improves existing code structure\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Configure agents in agents.json:\n")
+		fmt.Fprintf(os.Stderr, "    {\n")
+		fmt.Fprintf(os.Stderr, "      \"agents\": [\n")
+		fmt.Fprintf(os.Stderr, "        {\"id\": \"impl-1\", \"role\": \"implementer\", \"command\": \"cursor-agent\", \"enabled\": true},\n")
+		fmt.Fprintf(os.Stderr, "        {\"id\": \"test-1\", \"role\": \"tester\", \"command\": \"cursor-agent\", \"enabled\": true}\n")
+		fmt.Fprintf(os.Stderr, "      ],\n")
+		fmt.Fprintf(os.Stderr, "      \"max_parallel\": 2,\n")
+		fmt.Fprintf(os.Stderr, "      \"conflict_resolution\": \"priority\"\n")
+		fmt.Fprintf(os.Stderr, "    }\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -multi-agent              Enable multi-agent collaboration mode\n")
+		fmt.Fprintf(os.Stderr, "    -agents <path>            Path to agents configuration file\n")
+		fmt.Fprintf(os.Stderr, "    -parallel-agents <n>      Maximum parallel agents (default: 2)\n")
+		fmt.Fprintf(os.Stderr, "    -list-agents              List configured agents\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -416,6 +455,8 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -goal-status                     # Show progress toward goals\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-goals                      # List all goals\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -decompose-goal auth             # Decompose specific goal\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-agents                     # Show configured agents\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -multi-agent -iterations 5       # Run with multi-agent collaboration\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -556,6 +597,16 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	// Goals settings
 	if fileCfg.GoalsFile != "" && !explicitFlags["goals-file"] {
 		cfg.GoalsFile = fileCfg.GoalsFile
+	}
+	// Multi-agent settings
+	if fileCfg.AgentsFile != "" && !explicitFlags["agents"] {
+		cfg.AgentsFile = fileCfg.AgentsFile
+	}
+	if fileCfg.ParallelAgents > 0 && !explicitFlags["parallel-agents"] {
+		cfg.ParallelAgents = fileCfg.ParallelAgents
+	}
+	if fileCfg.EnableMultiAgent && !explicitFlags["multi-agent"] {
+		cfg.EnableMultiAgent = fileCfg.EnableMultiAgent
 	}
 }
 
@@ -2090,4 +2141,89 @@ func getIDs(plans []plan.Plan) []int {
 		ids[i] = p.ID
 	}
 	return ids
+}
+
+// handleListAgents displays configured agents
+func handleListAgents(cfg *config.Config) error {
+	// Check if agents file exists
+	if _, err := os.Stat(cfg.AgentsFile); os.IsNotExist(err) {
+		fmt.Println("No agents configuration found.")
+		fmt.Println()
+		fmt.Println("To configure multi-agent collaboration, create agents.json:")
+		fmt.Println()
+		fmt.Println(`{
+  "agents": [
+    {
+      "id": "implementer-1",
+      "role": "implementer",
+      "command": "cursor-agent",
+      "specialization": "backend",
+      "priority": 10,
+      "enabled": true
+    },
+    {
+      "id": "tester-1",
+      "role": "tester",
+      "command": "cursor-agent",
+      "specialization": "testing",
+      "priority": 8,
+      "enabled": true
+    },
+    {
+      "id": "reviewer-1",
+      "role": "reviewer",
+      "command": "claude",
+      "specialization": "code quality",
+      "priority": 6,
+      "enabled": true
+    }
+  ],
+  "max_parallel": 2,
+  "conflict_resolution": "priority"
+}`)
+		fmt.Println()
+		fmt.Println("Then run with -multi-agent flag to enable multi-agent mode.")
+		return nil
+	}
+
+	// Load agents configuration
+	agentConfig, err := multiagent.LoadMultiAgentConfig(cfg.AgentsFile)
+	if err != nil {
+		return fmt.Errorf("failed to load agents config: %w", err)
+	}
+
+	fmt.Printf("=== Multi-Agent Configuration (from %s) ===\n", cfg.AgentsFile)
+	fmt.Printf("Max parallel agents: %d\n", agentConfig.MaxParallel)
+	fmt.Printf("Conflict resolution: %s\n", agentConfig.ConflictResolution)
+	fmt.Println()
+
+	fmt.Println("Configured Agents:")
+	for _, agent := range agentConfig.Agents {
+		status := "enabled"
+		if !agent.Enabled {
+			status = "disabled"
+		}
+		fmt.Printf("  %s [%s] - %s (%s)\n", agent.ID, agent.Role, agent.Command, status)
+		if agent.Specialization != "" {
+			fmt.Printf("    Specialization: %s\n", agent.Specialization)
+		}
+		fmt.Printf("    Priority: %d\n", agent.Priority)
+	}
+
+	// Count agents by role
+	roleCounts := make(map[multiagent.AgentRole]int)
+	for _, agent := range agentConfig.Agents {
+		if agent.Enabled {
+			roleCounts[agent.Role]++
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Role Summary:")
+	for _, role := range multiagent.ValidRoles {
+		count := roleCounts[role]
+		fmt.Printf("  %s: %d agent(s)\n", role, count)
+	}
+
+	return nil
 }
