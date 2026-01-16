@@ -17,6 +17,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Long-Running Memory**: Remembers architectural decisions and conventions across sessions
 - **Nudge System**: Lightweight mid-run guidance without stopping execution
 - **Smart Scope Control**: Iteration budgets and time limits to prevent over-building
+- **Adaptive Replanning**: Dynamically adjusts plans when tests fail repeatedly or requirements change
 
 ## Installation
 
@@ -212,6 +213,20 @@ Scope Control Options:
         Time limit for the run (e.g., "1h", "30m", "2h30m")
   -list-deferred
         List features that have been deferred
+
+Replanning Options:
+  -auto-replan
+        Enable automatic replanning when triggers fire
+  -replan
+        Manually trigger replanning
+  -replan-strategy string
+        Replanning strategy: incremental, agent, none (default "incremental")
+  -replan-threshold int
+        Consecutive failures before replanning (default: 3)
+  -list-versions
+        List plan backup versions
+  -restore-version int
+        Restore a specific plan version
 ```
 
 ### Output Options
@@ -1041,6 +1056,210 @@ Review and un-defer them manually when ready to continue.
 2. **Review deferrals**: Regularly check `-list-deferred` to understand what needs attention
 3. **Simplify complex features**: If a feature is repeatedly deferred, break it into smaller pieces
 4. **Adjust over time**: Tune your scope limits based on your project's complexity
+
+## Adaptive Plan Replanning
+
+Ralph includes an adaptive replanning system that dynamically adjusts the plan when issues occur. This enables self-correction without full restart, reducing stuck states and improving autonomy.
+
+### Replan Triggers
+
+The replanning system monitors for conditions that indicate the current plan may need adjustment:
+
+| Trigger | Condition | Description |
+|---------|-----------|-------------|
+| `test_failure` | Consecutive failures >= threshold | Repeated test failures suggest the feature may need to be broken down |
+| `requirement_change` | plan.json externally modified | External changes to the plan file are detected and reconciled |
+| `blocked_feature` | Feature becomes blocked | When a feature is deferred or blocked, the plan may need adjustment |
+| `manual` | User triggers explicitly | Manual replanning via `-replan` flag |
+
+### Replan Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `incremental` (default) | Adjust remaining features based on current state | Most situations, quick adjustments |
+| `agent` | Use AI agent to generate a new plan | Complex situations, major restructuring |
+| `none` | Disable replanning | When you want full manual control |
+
+### Plan Versioning
+
+Before any replanning occurs, Ralph creates a backup of the current plan:
+
+- Backups are stored as `plan.json.bak.N` (where N is the version number)
+- Each backup includes timestamp and trigger information
+- You can restore any version if needed
+
+### Usage Examples
+
+```bash
+# Enable automatic replanning during iterations
+ralph -iterations 10 -auto-replan
+
+# Set replan threshold (consecutive failures before replanning)
+ralph -iterations 10 -auto-replan -replan-threshold 5
+
+# Use agent-based replanning strategy
+ralph -iterations 10 -auto-replan -replan-strategy agent
+
+# Manually trigger replanning
+ralph -replan
+
+# Manual replan with agent strategy
+ralph -replan -replan-strategy agent
+
+# List plan backup versions
+ralph -list-versions
+
+# Restore a specific plan version
+ralph -restore-version 2
+```
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# Enable automatic replanning
+ralph -iterations 10 -auto-replan
+
+# Set consecutive failure threshold (default: 3)
+ralph -iterations 10 -auto-replan -replan-threshold 5
+
+# Set replanning strategy
+ralph -iterations 10 -replan-strategy incremental
+ralph -iterations 10 -replan-strategy agent
+ralph -iterations 10 -replan-strategy none
+
+# Manual replanning
+ralph -replan
+
+# Version management
+ralph -list-versions
+ralph -restore-version 2
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+auto_replan: true              # Enable automatic replanning
+replan_strategy: incremental   # Strategy: incremental, agent, none
+replan_threshold: 3            # Consecutive failures before replanning
+```
+
+### How It Works
+
+1. **Trigger Detection**: During iterations, Ralph monitors for replan triggers
+2. **Backup Creation**: Before any changes, the current plan is backed up
+3. **Strategy Execution**: The configured strategy analyzes the situation and proposes changes
+4. **Diff Display**: Changes are shown before being applied
+5. **Plan Update**: If successful, the plan file is updated with the new plan
+6. **State Reset**: Failure counters are reset after replanning
+
+### Incremental Strategy Details
+
+The incremental strategy makes intelligent adjustments based on the trigger:
+
+**For test failures:**
+- Marks complex features for review
+- Suggests breaking large features into smaller steps
+- Identifies potential prerequisite dependencies
+
+**For blocked features:**
+- Marks blocked features as deferred
+- Identifies the next viable feature to work on
+- Reorders remaining work if needed
+
+**For requirement changes:**
+- Validates the updated plan for consistency
+- Reconciles changes with execution state
+- Reports on plan status (tested/untested/deferred counts)
+
+### Agent-Based Strategy Details
+
+The agent strategy sends the current state to the AI agent for analysis:
+
+- Provides full context: current plan, failures, blocked features
+- Agent can suggest more extensive restructuring
+- Useful when incremental adjustments aren't sufficient
+
+### Version Management
+
+```bash
+# List all backup versions
+ralph -list-versions
+
+# Output:
+# === Plan Versions (from plan.json) ===
+#   Version 1: 2026-01-16T12:00:00Z (trigger: test_failure)
+#     Path: plan.json.bak.1.json
+#   Version 2: 2026-01-16T13:30:00Z (trigger: manual)
+#     Path: plan.json.bak.2.json
+#
+# Total: 2 version(s)
+#
+# To restore a version:
+#   ralph -restore-version <number>
+
+# Restore a specific version
+ralph -restore-version 1
+# Output: Restored plan version 1
+```
+
+### Example Workflow
+
+1. **Start with auto-replan enabled:**
+   ```bash
+   ralph -iterations 20 -auto-replan -replan-threshold 3
+   ```
+
+2. **During execution**, if tests fail 3 times consecutively:
+   ```
+   === Automatic Replanning Triggered ===
+   Trigger: test_failure
+   
+   Replanning completed: Feature #5 marked for review; Consider breaking into smaller steps
+   Backup created: plan.json.bak.1.json
+   
+   Plan Changes:
+     ~ Modified: 1 change(s)
+       - #5.description: Complex feature -> Complex feature [REQUIRES REVIEW]
+   ```
+
+3. **If the plan is externally modified** while running:
+   ```
+   === Automatic Replanning Triggered ===
+   Trigger: requirement_change
+   
+   Replanning completed: Plan reconciled: 3 tested, 5 untested, 2 deferred
+   ```
+
+4. **After execution**, review versions if needed:
+   ```bash
+   ralph -list-versions
+   ```
+
+5. **Restore an earlier version** if the replan didn't help:
+   ```bash
+   ralph -restore-version 1
+   ```
+
+### Replanning vs Recovery
+
+| Aspect | Recovery | Replanning |
+|--------|----------|------------|
+| Scope | Single feature | Entire plan |
+| Trigger | Any failure | Repeated/systemic failures |
+| Action | Retry/skip/rollback feature | Restructure plan |
+| Persistence | No plan changes | Updates plan.json |
+| Versioning | None | Creates backups |
+
+Use recovery for individual failures, use replanning when the plan itself needs adjustment.
+
+### Best Practices
+
+1. **Start with incremental**: The incremental strategy is safer and faster for most situations
+2. **Set appropriate threshold**: Don't set the threshold too low (constant replanning) or too high (stuck states)
+3. **Review version history**: Use `-list-versions` to understand what changes were made
+4. **Combine with scope control**: Use `-scope-limit` alongside `-auto-replan` for best results
+5. **Manual replan for major changes**: Use `-replan -replan-strategy agent` when you need significant restructuring
 
 ## Milestone-Based Progress Tracking
 

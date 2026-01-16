@@ -19,6 +19,7 @@ import (
 	"github.com/logimos/ralph/internal/plan"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
+	"github.com/logimos/ralph/internal/replan"
 	"github.com/logimos/ralph/internal/scope"
 	"github.com/logimos/ralph/internal/ui"
 )
@@ -101,6 +102,19 @@ func main() {
 		return
 	}
 
+	// Handle replan-related commands
+	if cfg.ListVersions || cfg.RestoreVersion > 0 || cfg.Replan {
+		if err := validateConfig(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		if err := handleReplanCommands(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -162,6 +176,13 @@ func parseFlags() *config.Config {
 	flag.IntVar(&cfg.ScopeLimit, "scope-limit", config.DefaultScopeLimit, "Max iterations per feature (0 = unlimited)")
 	flag.StringVar(&cfg.Deadline, "deadline", "", "Deadline duration (e.g., '1h', '30m', '2h30m')")
 	flag.BoolVar(&cfg.ListDeferred, "list-deferred", false, "List deferred features")
+	// Replanning flags
+	flag.BoolVar(&cfg.AutoReplan, "auto-replan", config.DefaultAutoReplan, "Enable automatic replanning when triggers fire")
+	flag.BoolVar(&cfg.Replan, "replan", false, "Manually trigger replanning")
+	flag.StringVar(&cfg.ReplanStrategy, "replan-strategy", config.DefaultReplanStrategy, "Replanning strategy: incremental, agent, none")
+	flag.IntVar(&cfg.ReplanThreshold, "replan-threshold", config.DefaultReplanThreshold, "Consecutive failures before replanning (default: 3)")
+	flag.BoolVar(&cfg.ListVersions, "list-versions", false, "List plan backup versions")
+	flag.IntVar(&cfg.RestoreVersion, "restore-version", 0, "Restore a specific plan version")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -267,6 +288,23 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  When a feature exceeds its iteration limit or the deadline is reached,\n")
 		fmt.Fprintf(os.Stderr, "  Ralph automatically defers the feature and moves to the next one.\n")
 		fmt.Fprintf(os.Stderr, "  Deferred features are marked in plan.json with 'deferred: true'.\n")
+		fmt.Fprintf(os.Stderr, "\nAdaptive Replanning:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph can dynamically adjust plans when issues occur.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Options:\n")
+		fmt.Fprintf(os.Stderr, "    -auto-replan           Enable automatic replanning when triggers fire\n")
+		fmt.Fprintf(os.Stderr, "    -replan                Manually trigger replanning\n")
+		fmt.Fprintf(os.Stderr, "    -replan-strategy       Strategy: incremental, agent, none (default: incremental)\n")
+		fmt.Fprintf(os.Stderr, "    -replan-threshold <n>  Consecutive failures before replanning (default: 3)\n")
+		fmt.Fprintf(os.Stderr, "    -list-versions         List plan backup versions\n")
+		fmt.Fprintf(os.Stderr, "    -restore-version <n>   Restore a specific plan version\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Replan triggers:\n")
+		fmt.Fprintf(os.Stderr, "    - test_failure:       Repeated test failures (threshold reached)\n")
+		fmt.Fprintf(os.Stderr, "    - requirement_change: plan.json externally modified\n")
+		fmt.Fprintf(os.Stderr, "    - blocked_feature:    Feature becomes blocked/deferred\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Plan versioning creates backups as plan.json.bak.N before changes.\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -288,6 +326,10 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -scope-limit 3     # Max 3 iterations per feature\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 10 -deadline 2h      # 2 hour time limit\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-deferred                   # Show deferred features\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -auto-replan       # Enable automatic replanning\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -replan -replan-strategy agent   # Manually trigger agent-based replanning\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-versions                   # Show plan backup versions\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -restore-version 2               # Restore plan version 2\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -414,6 +456,16 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	}
 	if fileCfg.Deadline != "" && !explicitFlags["deadline"] {
 		cfg.Deadline = fileCfg.Deadline
+	}
+	// Replan settings
+	if fileCfg.AutoReplan && !explicitFlags["auto-replan"] {
+		cfg.AutoReplan = fileCfg.AutoReplan
+	}
+	if fileCfg.ReplanStrategy != "" && !explicitFlags["replan-strategy"] {
+		cfg.ReplanStrategy = fileCfg.ReplanStrategy
+	}
+	if fileCfg.ReplanThreshold > 0 && !explicitFlags["replan-threshold"] {
+		cfg.ReplanThreshold = fileCfg.ReplanThreshold
 	}
 }
 
@@ -581,6 +633,11 @@ func runIterations(cfg *config.Config) error {
 	strategyType, _ := recovery.ParseStrategyType(cfg.RecoveryStrategy)
 	recoveryMgr := recovery.NewRecoveryManager(cfg.MaxRetries, strategyType)
 
+	// Initialize replan manager
+	replanMgr := replan.NewReplanManager(cfg.PlanFile, cfg.AgentCmd, cfg.AutoReplan)
+	replanStrategyType, _ := replan.ParseStrategyType(cfg.ReplanStrategy)
+	consecutiveFailures := 0
+
 	// Initialize scope manager
 	scopeConstraints := &scope.Constraints{
 		MaxIterationsPerFeature: cfg.ScopeLimit,
@@ -597,6 +654,11 @@ func runIterations(cfg *config.Config) error {
 	// Show scope info if scope control is enabled
 	if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
 		output.Info("Scope control: %s", formatScopeInfo(cfg))
+	}
+	
+	// Show replan info if enabled
+	if cfg.AutoReplan {
+		output.Info("Auto-replan: enabled (strategy: %s, threshold: %d failures)", cfg.ReplanStrategy, cfg.ReplanThreshold)
 	}
 
 	// Track metrics for summary
@@ -812,13 +874,19 @@ func runIterations(cfg *config.Config) error {
 				output.Warn("Failure detected: %s", failure)
 				summary.Errors = append(summary.Errors, failure.String())
 				
+				// Track consecutive failures for replanning
+				consecutiveFailures++
+				
 				// Log failure to progress file
 				logFailureToProgress(cfg.ProgressFile, failure)
 
 				if recoveryResult.ShouldSkip {
 					output.Info("Recovery: %s", recoveryResult.Message)
 					summary.FeaturesSkipped++
-					// Continue to next iteration (which will work on next feature)
+					// Add to blocked features for replan tracking
+					replanMgr.AddBlockedFeature(currentFeatureID)
+					// Reset consecutive failures when skipping
+					consecutiveFailures = 0
 				} else if recoveryResult.ShouldRetry {
 					output.Info("Recovery: %s", recoveryResult.Message)
 					// Set additional guidance for the retry
@@ -831,15 +899,45 @@ func runIterations(cfg *config.Config) error {
 					output.Error("Recovery action failed: %s", recoveryResult.Message)
 					summary.FeaturesFailed++
 				}
+				
+				// Check for replanning triggers
+				replanMgr.UpdateState(currentFeatureID, consecutiveFailures, []string{string(failure.Type)}, plans)
+				replanMgr.IncrementIterations()
+				
+				if shouldReplan, trigger := replanMgr.ShouldReplan(); shouldReplan {
+					output.SubHeader("Automatic Replanning Triggered")
+					output.Info("Trigger: %s", trigger)
+					
+					replanResult, replanErr := replanMgr.ExecuteReplan(replanStrategyType, trigger)
+					if replanErr != nil {
+						output.Error("Replanning failed: %v", replanErr)
+					} else if replanResult.Success {
+						output.Success("Replanning completed: %s", replanResult.Message)
+						if replanResult.OldPlanPath != "" {
+							output.Debug("Backup created: %s", replanResult.OldPlanPath)
+						}
+						if replanResult.Diff != nil && !replanResult.Diff.IsEmpty() {
+							output.Print("%s", replanResult.Diff.Summary())
+						}
+						// Update local plans reference
+						plans = replanResult.NewPlans
+						// Log replan to progress file
+						appendProgress(cfg.ProgressFile, fmt.Sprintf("REPLAN: %s triggered, strategy: %s", trigger, replanStrategyType))
+						// Reset consecutive failures after replanning
+						consecutiveFailures = 0
+					}
+				}
 			} else if err != nil {
 				// Agent execution error but no specific failure detected
 				output.Error("Agent execution error: %v", err)
 				summary.Errors = append(summary.Errors, err.Error())
+				consecutiveFailures++
 			}
 		} else {
 			// Iteration completed without obvious failures
-			// This doesn't necessarily mean a feature was completed,
-			// but for tracking purposes we count successful iterations
+			// Reset consecutive failures on success
+			consecutiveFailures = 0
+			replanMgr.ResetState()
 		}
 
 		output.Print("") // Empty line between iterations
@@ -1260,6 +1358,98 @@ func extractCurrentFeatureFromPlans(planFile string) (int, int, string) {
 		}
 	}
 	return 0, 0, ""
+}
+
+// handleReplanCommands processes replan-related CLI commands
+func handleReplanCommands(cfg *config.Config) error {
+	// Create replan manager
+	replanMgr := replan.NewReplanManager(cfg.PlanFile, cfg.AgentCmd, cfg.AutoReplan)
+
+	// Handle list versions command
+	if cfg.ListVersions {
+		versions := replanMgr.GetVersions()
+		fmt.Printf("=== Plan Versions (from %s) ===\n", cfg.PlanFile)
+		if len(versions) == 0 {
+			fmt.Println("No backup versions found.")
+			fmt.Println()
+			fmt.Println("Backups are created automatically when:")
+			fmt.Println("  - Replanning is triggered")
+			fmt.Println("  - Plan.json is modified during execution")
+			fmt.Println()
+			fmt.Println("To enable automatic replanning:")
+			fmt.Printf("  %s -iterations 5 -auto-replan\n", os.Args[0])
+		} else {
+			for _, v := range versions {
+				fmt.Printf("  Version %d: %s (trigger: %s)\n", v.Version, v.Timestamp.Format(time.RFC3339), v.Trigger)
+				fmt.Printf("    Path: %s\n", v.Path)
+			}
+			fmt.Printf("\nTotal: %d version(s)\n", len(versions))
+			fmt.Println("\nTo restore a version:")
+			fmt.Printf("  %s -restore-version <number>\n", os.Args[0])
+		}
+		return nil
+	}
+
+	// Handle restore version command
+	if cfg.RestoreVersion > 0 {
+		if err := replanMgr.RestoreVersion(cfg.RestoreVersion); err != nil {
+			return fmt.Errorf("failed to restore version %d: %w", cfg.RestoreVersion, err)
+		}
+		fmt.Printf("Restored plan version %d\n", cfg.RestoreVersion)
+		return nil
+	}
+
+	// Handle manual replan command
+	if cfg.Replan {
+		// Load current plans
+		plans, err := plan.ReadFile(cfg.PlanFile)
+		if err != nil {
+			return fmt.Errorf("failed to load plan file: %w", err)
+		}
+
+		// Find current feature (first untested, non-deferred)
+		currentFeatureID := 0
+		for _, p := range plans {
+			if !p.Tested && !p.Deferred {
+				currentFeatureID = p.ID
+				break
+			}
+		}
+
+		// Update state
+		replanMgr.UpdateState(currentFeatureID, 0, nil, plans)
+
+		// Parse strategy
+		strategyType, err := replan.ParseStrategyType(cfg.ReplanStrategy)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Manual replanning with strategy: %s\n", strategyType)
+
+		// Execute replanning
+		result, err := replanMgr.ManualReplan(strategyType)
+		if err != nil {
+			return fmt.Errorf("replanning failed: %w", err)
+		}
+
+		// Display results
+		if result.Success {
+			fmt.Println("Replanning successful!")
+			if result.OldPlanPath != "" {
+				fmt.Printf("Backup created: %s\n", result.OldPlanPath)
+			}
+			if result.Diff != nil && !result.Diff.IsEmpty() {
+				fmt.Println()
+				fmt.Println(result.Diff.Summary())
+			}
+		} else {
+			fmt.Printf("Replanning completed: %s\n", result.Message)
+		}
+		return nil
+	}
+
+	return nil
 }
 
 // handleMilestoneCommands processes milestone-related CLI commands

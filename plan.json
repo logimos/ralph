@@ -202,7 +202,7 @@
             "Document replanning system in README"
         ],
         "expected_output": "Ralph dynamically adjusts the remaining plan when tests fail or requirements change, self-correcting without full restart",
-        "tested": false
+        "tested": true
     },
     {
         "id": 11,

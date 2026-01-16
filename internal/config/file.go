@@ -65,6 +65,11 @@ type FileConfig struct {
 	// Scope control settings
 	ScopeLimit int    `json:"scope_limit,omitempty" yaml:"scope_limit,omitempty"` // Max iterations per feature
 	Deadline   string `json:"deadline,omitempty" yaml:"deadline,omitempty"`       // Deadline duration (e.g., "1h", "30m")
+
+	// Replanning settings
+	AutoReplan      bool   `json:"auto_replan,omitempty" yaml:"auto_replan,omitempty"`           // Enable automatic replanning
+	ReplanStrategy  string `json:"replan_strategy,omitempty" yaml:"replan_strategy,omitempty"`   // Replanning strategy: incremental, agent
+	ReplanThreshold int    `json:"replan_threshold,omitempty" yaml:"replan_threshold,omitempty"` // Consecutive failures before replanning
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -235,6 +240,26 @@ func ValidateFileConfig(cfg *FileConfig) error {
 		}
 	}
 
+	// Validate replan strategy if specified
+	validReplanStrategies := map[string]bool{
+		"":            true, // empty is valid (use default)
+		"incremental": true,
+		"inc":         true,
+		"agent":       true,
+		"ai":          true,
+		"none":        true,
+		"off":         true,
+	}
+
+	if !validReplanStrategies[cfg.ReplanStrategy] {
+		return fmt.Errorf("invalid replan_strategy %q: must be one of incremental, agent, or none", cfg.ReplanStrategy)
+	}
+
+	// Validate replan threshold if specified
+	if cfg.ReplanThreshold < 0 {
+		return fmt.Errorf("replan_threshold cannot be negative")
+	}
+
 	return nil
 }
 
@@ -323,6 +348,17 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.Deadline != "" && cfg.Deadline == "" {
 		cfg.Deadline = fileCfg.Deadline
+	}
+
+	// Apply replan settings
+	if fileCfg.AutoReplan && !cfg.AutoReplan {
+		cfg.AutoReplan = fileCfg.AutoReplan
+	}
+	if fileCfg.ReplanStrategy != "" && cfg.ReplanStrategy == DefaultReplanStrategy {
+		cfg.ReplanStrategy = fileCfg.ReplanStrategy
+	}
+	if fileCfg.ReplanThreshold > 0 && cfg.ReplanThreshold == DefaultReplanThreshold {
+		cfg.ReplanThreshold = fileCfg.ReplanThreshold
 	}
 }
 

@@ -22,6 +22,12 @@ const (
 	DefaultNudgeFile = "nudges.json"
 	// DefaultScopeLimit is the default max iterations per feature (0 = unlimited)
 	DefaultScopeLimit = 0
+	// DefaultAutoReplan controls whether replanning happens automatically
+	DefaultAutoReplan = false
+	// DefaultReplanStrategy is the default replanning strategy
+	DefaultReplanStrategy = "incremental"
+	// DefaultReplanThreshold is the default number of consecutive failures before replanning
+	DefaultReplanThreshold = 3
 )
 
 // Config holds the application configuration
@@ -68,6 +74,13 @@ type Config struct {
 	ScopeLimit   int    // Max iterations per feature (0 = unlimited)
 	Deadline     string // Deadline duration (e.g., "1h", "30m", "2h30m")
 	ListDeferred bool   // List deferred features
+	// Replanning configuration
+	AutoReplan       bool   // Enable automatic replanning when triggers fire
+	Replan           bool   // Manually trigger replanning
+	ReplanStrategy   string // Replanning strategy: incremental, agent
+	ReplanThreshold  int    // Number of consecutive failures before replanning
+	ListVersions     bool   // List plan versions
+	RestoreVersion   int    // Restore a specific plan version
 }
 
 // New creates a new Config with default values
@@ -84,5 +97,8 @@ func New() *Config {
 		MemoryRetention:  DefaultMemoryRetention,
 		NudgeFile:        DefaultNudgeFile,
 		ScopeLimit:       DefaultScopeLimit,
+		AutoReplan:       DefaultAutoReplan,
+		ReplanStrategy:   DefaultReplanStrategy,
+		ReplanThreshold:  DefaultReplanThreshold,
 	}
 }

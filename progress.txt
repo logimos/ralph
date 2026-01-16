@@ -615,3 +615,97 @@ type Constraints struct {
 - Consider adding scope limit auto-adjustment based on complexity
 - The extractCurrentFeatureFromPlans function re-reads plan.json each iteration (could be optimized)
 
+## 2026-01-16: Adaptive Plan Replanning (Feature #10)
+
+### Completed
+- Created `internal/replan` package with comprehensive adaptive replanning:
+  - `replan.go` - ReplanTrigger interface, trigger implementations, plan versioning, diff computation
+  - `strategy.go` - ReplanStrategy interface, incremental and agent-based strategies
+  - `replan_test.go` - 25+ tests for triggers, versioning, and diff computation
+  - `strategy_test.go` - 25+ tests for strategies and manager
+- Implemented replan triggers:
+  - `TestFailureTrigger` - Triggers replanning after N consecutive test failures
+  - `RequirementChangeTrigger` - Detects external plan.json modifications via hash comparison
+  - `BlockedFeatureTrigger` - Triggers when features become blocked
+  - `ManualTrigger` - For user-initiated replanning
+- Implemented replan strategies:
+  - `IncrementalStrategy` - Makes intelligent adjustments based on trigger type:
+    - Test failures: marks features for review, identifies prerequisites
+    - Blocked features: defers blocked features, finds next viable feature
+    - Requirement changes: reconciles plan state, validates consistency
+  - `AgentBasedStrategy` - Sends full context to AI agent for restructuring
+- Implemented plan versioning:
+  - Automatic backup creation before replanning (`plan.json.bak.N`)
+  - Hash-based deduplication (same content = same backup)
+  - Version discovery, listing, and restoration
+  - Timestamp and trigger tracking for each version
+- Implemented plan diff display:
+  - Shows added, removed, and modified features
+  - Human-readable summary output
+  - Field-level change tracking
+- Added CLI flags:
+  - `-auto-replan` - Enable automatic replanning when triggers fire
+  - `-replan` - Manually trigger replanning
+  - `-replan-strategy` - Strategy selection (incremental, agent, none)
+  - `-replan-threshold` - Consecutive failure threshold (default: 3)
+  - `-list-versions` - List plan backup versions
+  - `-restore-version` - Restore a specific plan version
+- Added config file support: `auto_replan`, `replan_strategy`, `replan_threshold` fields
+- Integrated replanning into `runIterations()`:
+  - Tracks consecutive failures
+  - Updates replan state after each iteration
+  - Checks triggers and executes replanning when enabled
+  - Logs replan events to progress file
+  - Resets failure counters after successful iteration or replan
+- Updated README.md with comprehensive replanning documentation:
+  - Replan triggers and strategies
+  - Plan versioning and restoration
+  - Configuration (CLI and file)
+  - Example workflows
+  - Best practices
+- All 200+ tests passing (50+ replan tests + existing tests)
+
+### Package Structure
+```
+internal/replan/
+├── replan.go      # Triggers, versioning, diff computation
+├── replan_test.go # Tests for triggers and versioning
+├── strategy.go    # Strategies and ReplanManager
+└── strategy_test.go # Tests for strategies
+```
+
+### Replan Triggers
+| Trigger | Condition | Description |
+|---------|-----------|-------------|
+| `test_failure` | Consecutive failures >= threshold | Repeated test failures |
+| `requirement_change` | plan.json hash changed | External modifications |
+| `blocked_feature` | Features blocked | When features are deferred |
+| `manual` | User triggers | Explicit `-replan` flag |
+
+### Replan Strategies
+| Strategy | Description |
+|----------|-------------|
+| `incremental` (default) | Adjust remaining features based on current state |
+| `agent` | Use AI agent to generate new plan |
+| `none` | Disable replanning |
+
+### Configuration Options
+```yaml
+# .ralph.yaml
+auto_replan: true              # Enable automatic replanning
+replan_strategy: incremental   # Strategy: incremental, agent, none
+replan_threshold: 3            # Consecutive failures before replanning
+```
+
+### Notes for Next Developer
+- Replanning is triggered AFTER recovery actions (retry/skip) fail to resolve issues
+- Plan versioning uses MD5 hash for deduplication - same content won't create duplicate backups
+- The incremental strategy doesn't modify the plan in ways that would break execution
+- Agent-based strategy requires a working agent command and may produce unpredictable results
+- Replan state tracks consecutive failures per execution, not per feature
+- Manual replanning (`-replan`) doesn't require `-iterations` flag
+- Version restoration overwrites plan.json but doesn't delete backups
+- Consider adding webhook/callback support for external replan triggers
+- Consider adding replan history tracking (not just versions, but trigger history)
+- The replan package follows the established package-per-concern pattern
+
