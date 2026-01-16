@@ -19,6 +19,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Nudge System**: Lightweight mid-run guidance without stopping execution
 - **Smart Scope Control**: Iteration budgets and time limits to prevent over-building
 - **Adaptive Replanning**: Dynamically adjusts plans when tests fail repeatedly or requirements change
+- **Goal-Oriented Planning**: Define high-level goals and let AI decompose them into actionable plans
 
 ## Installation
 
@@ -234,6 +235,22 @@ Validation Options:
         Run validations for all completed features
   -validate-feature int
         Validate a specific feature by ID
+
+Goal Options:
+  -goal string
+        Add a high-level goal to decompose into plan items
+  -goal-priority int
+        Priority for the goal (higher = more important, default: 5)
+  -goal-status
+        Show progress toward all goals
+  -list-goals
+        List all goals
+  -decompose-goal string
+        Decompose a specific goal by ID into plan items
+  -decompose-all
+        Decompose all pending goals into plan items
+  -goals-file string
+        Path to goals file (default "goals.json")
 ```
 
 ### Output Options
@@ -1651,6 +1668,274 @@ ralph -validate -verbose
   ]
 }
 ```
+
+## Goal-Oriented Planning
+
+Ralph supports goal-oriented project outcomes where you specify high-level goals like "add user authentication" and Ralph automatically decomposes them into actionable plan items using AI.
+
+### Defining Goals
+
+There are two ways to define goals:
+
+**1. Via command line (single goal):**
+
+```bash
+# Add a goal and decompose it into plan items
+ralph -goal "Add user authentication with OAuth"
+
+# Set priority (higher = more important)
+ralph -goal "Add payment processing" -goal-priority 10
+```
+
+**2. Via goals.json file:**
+
+```json
+{
+  "goals": [
+    {
+      "id": "auth",
+      "description": "Add user authentication with OAuth",
+      "priority": 10,
+      "category": "security",
+      "success_criteria": [
+        "Users can log in via Google",
+        "Sessions persist across browser restarts",
+        "Logout properly clears session"
+      ],
+      "tags": ["auth", "security", "oauth"]
+    },
+    {
+      "id": "payments",
+      "description": "Integrate Stripe payment processing",
+      "priority": 8,
+      "category": "feature",
+      "success_criteria": [
+        "Users can add payment method",
+        "Subscriptions work correctly",
+        "Invoices are generated"
+      ],
+      "dependencies": ["auth"]
+    }
+  ]
+}
+```
+
+### Goal Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier for the goal |
+| `description` | High-level goal description (required) |
+| `priority` | Priority for ordering (higher = more important, default: 5) |
+| `category` | Category for grouping (auto-inferred from description if not set) |
+| `success_criteria` | Array of success criteria (helps AI understand what done looks like) |
+| `tags` | Tags for filtering and organization |
+| `dependencies` | IDs of goals this depends on (goals must complete first) |
+| `status` | Current status: pending, in_progress, complete, blocked |
+| `generated_plan_ids` | IDs of plan items generated from this goal |
+
+### Goal Commands
+
+```bash
+# Add and decompose a single goal
+ralph -goal "Add user authentication with OAuth"
+ralph -goal "Add payment processing" -goal-priority 10
+
+# List all goals
+ralph -list-goals
+
+# Show progress toward all goals
+ralph -goal-status
+
+# Decompose a specific goal into plan items
+ralph -decompose-goal auth
+
+# Decompose all pending goals
+ralph -decompose-all
+
+# Use a custom goals file
+ralph -goal "New feature" -goals-file my-goals.json
+```
+
+### Goal Decomposition
+
+When you add a goal with `-goal` or explicitly decompose with `-decompose-goal`, Ralph:
+
+1. **Analyzes the goal** using the AI agent
+2. **Generates plan items** with appropriate categories, steps, and expected outputs
+3. **Identifies dependencies** between generated items
+4. **Updates plan.json** with the new items
+5. **Links items to the goal** for progress tracking
+
+**Example decomposition:**
+
+```bash
+ralph -goal "Add user authentication with OAuth"
+
+# Output:
+# === Adding Goal ===
+# Goal: Add user authentication with OAuth
+# Priority: 5
+# 
+# ✓ Goal added with ID: goal_1705420800123456789
+# 
+# === Decomposing Goal into Plan Items ===
+# 
+# ✓ Generated 5 plan items
+# 
+# Generated plan items:
+#   16. [infra] Set up OAuth provider configuration
+#   17. [security] Implement OAuth callback handler
+#   18. [db] Create users table and session storage
+#   19. [feature] Add login/logout UI components
+#   20. [chore] Write authentication tests
+```
+
+### Goal Progress Tracking
+
+Track progress toward your goals:
+
+```bash
+ralph -goal-status
+
+# Output:
+# === Goal Progress ===
+#   Add user authentication: [████████░░░░░░░░░░░░] 40%
+#   Add payment processing: [pending] (no plan items)
+#   
+# Next goal to work on: Add user authentication (priority: 10)
+```
+
+Progress is calculated from:
+- **Completed items**: Plan items linked to the goal with `tested: true`
+- **Deferred items**: Items that were deferred due to scope constraints
+- **Remaining items**: Items still to be completed
+
+### Goal Dependencies
+
+Goals can depend on other goals:
+
+```json
+{
+  "goals": [
+    {
+      "id": "auth",
+      "description": "User authentication",
+      "priority": 10
+    },
+    {
+      "id": "payments",
+      "description": "Payment processing",
+      "priority": 8,
+      "dependencies": ["auth"]
+    }
+  ]
+}
+```
+
+When a goal has dependencies:
+- It's marked as **blocked** until dependencies complete
+- `-goal-status` shows which goals are blocking
+- `-list-goals` indicates blocked goals
+
+### Goal Status
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Goal hasn't been started |
+| `in_progress` | Work on the goal has started (has linked plan items) |
+| `complete` | All generated plan items are complete |
+| `blocked` | Waiting on dependent goals |
+
+### Configuration
+
+**Command-line flags:**
+```bash
+# Add a goal with decomposition
+ralph -goal "Feature description"
+
+# Set goal priority
+ralph -goal "Feature" -goal-priority 10
+
+# List all goals
+ralph -list-goals
+
+# Show goal progress
+ralph -goal-status
+
+# Decompose specific goal
+ralph -decompose-goal <goal-id>
+
+# Decompose all pending goals
+ralph -decompose-all
+
+# Use custom goals file
+ralph -goals-file project-goals.json
+```
+
+**Configuration file:**
+```yaml
+# .ralph.yaml
+goals_file: goals.json
+```
+
+### Category Inference
+
+When adding a goal without an explicit category, Ralph infers it from the description:
+
+| Keywords | Category |
+|----------|----------|
+| add, implement, create, build | feature |
+| setup, configure, deploy, docker | infrastructure |
+| database, db, migration, schema | database |
+| ui, frontend, component, page | ui |
+| api, endpoint, rest, graphql | api |
+| security, auth, authentication | security |
+| test, testing, coverage | testing |
+| performance, optimize, speed | performance |
+| document, docs, readme | documentation |
+| refactor, clean, reorganize | refactor |
+
+### Example Workflow
+
+1. **Define high-level goals:**
+   ```bash
+   ralph -goal "Add user authentication with OAuth" -goal-priority 10
+   ralph -goal "Implement payment processing with Stripe" -goal-priority 8
+   ralph -goal "Create admin dashboard" -goal-priority 5
+   ```
+
+2. **Check goals:**
+   ```bash
+   ralph -list-goals
+   ```
+
+3. **Run iterations to work on generated plans:**
+   ```bash
+   ralph -iterations 10 -verbose
+   ```
+
+4. **Track progress:**
+   ```bash
+   ralph -goal-status
+   ```
+
+5. **When one goal is complete, continue with next:**
+   ```bash
+   ralph -iterations 10  # Continues with next priority goal
+   ```
+
+### Goals vs Plans
+
+| Aspect | Goals | Plans |
+|--------|-------|-------|
+| Level | High-level outcomes | Specific, actionable tasks |
+| Creation | Manual or via `-goal` flag | Manual or decomposed from goals |
+| Tracking | Progress percentage | Individual completion (tested) |
+| Dependencies | Goal-to-goal | Within decomposed items |
+| Persistence | goals.json | plan.json |
+
+Use goals for project outcomes you want to achieve; use plans for specific tasks to implement.
 
 ## Plan File Format
 

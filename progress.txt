@@ -801,3 +801,114 @@ internal/validation/
 - Consider adding validation scheduling (run on interval) for monitoring
 - The validation package is independent and follows established patterns
 
+## 2026-01-16: Goal-Oriented Project Outcomes (Feature #12)
+
+### Completed
+- Created `internal/goals` package with comprehensive goal management:
+  - `goals.go` - Goal struct, Manager, GoalProgress, file operations, progress tracking
+  - `decompose.go` - Goal decomposition prompts, result parsing, plan merging
+  - `goals_test.go` - 40+ tests covering all goal functionality
+- Implemented Goal struct with fields:
+  - `ID` - Unique identifier for the goal
+  - `Description` - High-level goal description
+  - `SuccessCriteria` - Array of success criteria
+  - `Priority` - Priority ordering (higher = more important)
+  - `Category` - Goal category (auto-inferred from description)
+  - `Tags` - Tags for filtering and organization
+  - `Dependencies` - IDs of goals this depends on
+  - `GeneratedPlanIDs` - IDs of plan items generated from this goal
+  - `Status` - Goal status: pending, in_progress, complete, blocked
+- Implemented goal file operations:
+  - `LoadGoals()` / `SaveGoals()` - Persist goals to goals.json
+  - `AddGoal()` / `AddGoalFromDescription()` - Create new goals
+  - `UpdateGoal()` / `RemoveGoal()` - Modify/delete goals
+  - Support for both simple array format and structured GoalFile format
+- Implemented goal progress tracking:
+  - `CalculateProgress()` - Calculate progress from linked plan items
+  - `CalculateAllProgress()` - Progress for all goals
+  - `GetPendingGoals()` / `GetActiveGoals()` / `GetCompletedGoals()` - Filter by status
+  - `GetGoalsByPriority()` - Sort by priority
+  - `GetNextGoalToWork()` - Find highest priority non-blocked goal
+- Implemented goal decomposition:
+  - `BuildGoalDecompositionPrompt()` - Create AI prompt for single goal
+  - `BuildMultiGoalDecompositionPrompt()` - Create prompt for multiple goals
+  - `ParseDecompositionResult()` - Extract generated plans from agent output
+  - `MergePlans()` - Merge generated plans with existing plans
+  - `ValidatePlanDependencies()` - Check plan dependencies are valid
+- Implemented goal dependencies:
+  - Goals can depend on other goals
+  - Blocked status when dependencies not complete
+  - `getBlockingGoals()` - Find which goals are blocking
+- Added CLI flags:
+  - `-goal <description>` - Add and decompose a goal
+  - `-goal-priority <n>` - Set goal priority (default: 5)
+  - `-goal-status` - Show progress toward all goals
+  - `-list-goals` - List all goals
+  - `-decompose-goal <id>` - Decompose a specific goal
+  - `-decompose-all` - Decompose all pending goals
+  - `-goals-file <path>` - Custom goals file path
+- Added config file support: `goals_file` field in FileConfig
+- Integrated into `ralph.go`:
+  - Goal command handling in main()
+  - `handleGoalCommands()` for goal operations
+  - `decomposeGoal()` for AI-based decomposition
+  - Progress logging to progress.txt
+- Added category inference from goal descriptions
+- Updated README.md with comprehensive goals documentation:
+  - Defining goals (CLI and file)
+  - Goal fields reference
+  - Goal commands
+  - Goal decomposition explanation
+  - Progress tracking
+  - Goal dependencies
+  - Configuration options
+  - Example workflows
+- All 240+ tests passing (40+ goals tests + existing tests)
+
+### Package Structure
+```
+internal/goals/
+├── goals.go       # Goal struct, Manager, progress tracking, file operations
+├── decompose.go   # Decomposition prompts, result parsing, plan merging
+└── goals_test.go  # 40+ tests covering all functionality
+```
+
+### Goal File Format
+```json
+{
+  "goals": [
+    {
+      "id": "auth",
+      "description": "Add user authentication with OAuth",
+      "priority": 10,
+      "category": "security",
+      "success_criteria": ["Users can log in via Google", "Sessions persist"],
+      "dependencies": [],
+      "generated_plan_ids": [16, 17, 18],
+      "status": "in_progress",
+      "created_at": "2026-01-16T12:00:00Z"
+    }
+  ],
+  "last_updated": "2026-01-16T12:00:00Z",
+  "version": "1.0"
+}
+```
+
+### Goal Status Flow
+1. `pending` - Goal created, no plan items yet
+2. `in_progress` - Goal has linked plan items, work in progress
+3. `complete` - All linked plan items are tested
+4. `blocked` - Waiting on dependent goals
+
+### Notes for Next Developer
+- Goals are stored in goals.json, plan items in plan.json
+- Goal-to-plan linking is via GeneratedPlanIDs array
+- Category inference uses keyword matching on description
+- Decomposition requires a working agent command
+- Progress is calculated from linked plan items' tested status
+- Dependencies are goal-to-goal, not plan-to-plan
+- `GetNextGoalToWork()` skips blocked and completed goals
+- Consider adding goal templates in future iterations
+- Consider adding goal estimation/deadline tracking
+- The goals package is independent and follows established package-per-concern pattern
+

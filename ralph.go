@@ -14,6 +14,7 @@ import (
 	"github.com/logimos/ralph/internal/config"
 	"github.com/logimos/ralph/internal/detection"
 	"github.com/logimos/ralph/internal/environment"
+	"github.com/logimos/ralph/internal/goals"
 	"github.com/logimos/ralph/internal/memory"
 	"github.com/logimos/ralph/internal/milestone"
 	"github.com/logimos/ralph/internal/nudge"
@@ -130,6 +131,15 @@ func main() {
 		return
 	}
 
+	// Handle goal commands
+	if cfg.Goal != "" || cfg.GoalStatus || cfg.ListGoals || cfg.DecomposeGoal != "" || cfg.DecomposeAll {
+		if err := handleGoalCommands(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -201,6 +211,14 @@ func parseFlags() *config.Config {
 	// Validation flags
 	flag.BoolVar(&cfg.Validate, "validate", false, "Run validations for all completed features")
 	flag.IntVar(&cfg.ValidateFeature, "validate-feature", 0, "Validate a specific feature by ID")
+	// Goal flags
+	flag.StringVar(&cfg.GoalsFile, "goals-file", config.DefaultGoalsFile, "Path to goals file")
+	flag.StringVar(&cfg.Goal, "goal", "", "Add a high-level goal to decompose into plan items")
+	flag.IntVar(&cfg.GoalPriority, "goal-priority", 5, "Priority for the goal (higher = more important)")
+	flag.BoolVar(&cfg.GoalStatus, "goal-status", false, "Show progress toward all goals")
+	flag.BoolVar(&cfg.ListGoals, "list-goals", false, "List all goals")
+	flag.StringVar(&cfg.DecomposeGoal, "decompose-goal", "", "Decompose a specific goal by ID into plan items")
+	flag.BoolVar(&cfg.DecomposeAll, "decompose-all", false, "Decompose all pending goals into plan items")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -344,6 +362,29 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  Commands:\n")
 		fmt.Fprintf(os.Stderr, "    -validate              Run validations for all completed features\n")
 		fmt.Fprintf(os.Stderr, "    -validate-feature <id> Validate a specific feature\n")
+		fmt.Fprintf(os.Stderr, "\nGoal-Oriented Planning:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph can decompose high-level goals into actionable plans using AI.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Define goals in goals.json or via command line:\n")
+		fmt.Fprintf(os.Stderr, "    {\n")
+		fmt.Fprintf(os.Stderr, "      \"goals\": [\n")
+		fmt.Fprintf(os.Stderr, "        {\n")
+		fmt.Fprintf(os.Stderr, "          \"id\": \"auth\",\n")
+		fmt.Fprintf(os.Stderr, "          \"description\": \"Add user authentication with OAuth\",\n")
+		fmt.Fprintf(os.Stderr, "          \"priority\": 10,\n")
+		fmt.Fprintf(os.Stderr, "          \"success_criteria\": [\"Users can log in via Google\", \"Sessions persist\"]\n")
+		fmt.Fprintf(os.Stderr, "        }\n")
+		fmt.Fprintf(os.Stderr, "      ]\n")
+		fmt.Fprintf(os.Stderr, "    }\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -goal <description>       Add a goal and decompose it into plan items\n")
+		fmt.Fprintf(os.Stderr, "    -goal-priority <n>        Set priority for the goal (default: 5)\n")
+		fmt.Fprintf(os.Stderr, "    -goal-status              Show progress toward all goals\n")
+		fmt.Fprintf(os.Stderr, "    -list-goals               List all goals\n")
+		fmt.Fprintf(os.Stderr, "    -decompose-goal <id>      Decompose a specific goal into plan items\n")
+		fmt.Fprintf(os.Stderr, "    -decompose-all            Decompose all pending goals\n")
+		fmt.Fprintf(os.Stderr, "    -goals-file <path>        Use custom goals file\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -371,6 +412,10 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -restore-version 2               # Restore plan version 2\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -validate                        # Run validations for completed features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -validate-feature 5              # Validate specific feature\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -goal \"Add user authentication with OAuth\"  # Add and decompose goal\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -goal-status                     # Show progress toward goals\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-goals                      # List all goals\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -decompose-goal auth             # Decompose specific goal\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -507,6 +552,10 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	}
 	if fileCfg.ReplanThreshold > 0 && !explicitFlags["replan-threshold"] {
 		cfg.ReplanThreshold = fileCfg.ReplanThreshold
+	}
+	// Goals settings
+	if fileCfg.GoalsFile != "" && !explicitFlags["goals-file"] {
+		cfg.GoalsFile = fileCfg.GoalsFile
 	}
 }
 
@@ -1756,4 +1805,289 @@ func handleMilestoneCommands(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// handleGoalCommands processes goal-related CLI commands
+func handleGoalCommands(cfg *config.Config) error {
+	// Create UI instance
+	uiCfg := ui.OutputConfig{
+		NoColor:    cfg.NoColor,
+		Quiet:      cfg.Quiet,
+		JSONOutput: cfg.JSONOutput,
+		LogLevel:   ui.ParseLogLevel(cfg.LogLevel),
+	}
+	output := ui.New(uiCfg)
+
+	// Load existing plans (needed for progress tracking and decomposition)
+	var plans []plan.Plan
+	if _, err := os.Stat(cfg.PlanFile); err == nil {
+		plans, _ = plan.ReadFile(cfg.PlanFile)
+	}
+
+	// Create goal manager
+	goalMgr := goals.NewManager(plans)
+	goalMgr.SetGoalsFile(cfg.GoalsFile)
+
+	// Load existing goals
+	if err := goalMgr.LoadGoals(cfg.GoalsFile); err != nil && !os.IsNotExist(err) {
+		output.Warn("Failed to load goals: %v", err)
+	}
+
+	// Handle -list-goals flag
+	if cfg.ListGoals {
+		if !goalMgr.HasGoals() {
+			fmt.Println("No goals defined.")
+			fmt.Println()
+			fmt.Println("To add a goal, use:")
+			fmt.Printf("  %s -goal \"Add user authentication with OAuth\"\n", os.Args[0])
+			fmt.Println()
+			fmt.Println("Or create a goals.json file:")
+			fmt.Println("  {")
+			fmt.Println("    \"goals\": [")
+			fmt.Println("      {")
+			fmt.Println("        \"id\": \"auth\",")
+			fmt.Println("        \"description\": \"Add user authentication\",")
+			fmt.Println("        \"priority\": 10")
+			fmt.Println("      }")
+			fmt.Println("    ]")
+			fmt.Println("  }")
+			return nil
+		}
+
+		fmt.Println(goalMgr.Summary())
+		return nil
+	}
+
+	// Handle -goal-status flag
+	if cfg.GoalStatus {
+		if !goalMgr.HasGoals() {
+			fmt.Println("No goals defined.")
+			return nil
+		}
+
+		output.Header("Goal Progress")
+		allProgress := goalMgr.CalculateAllProgress()
+		
+		for _, p := range allProgress {
+			if p.TotalPlanItems > 0 {
+				output.Print("  %s: %s", p.Goal.Description, goals.FormatProgressBar(p, 20))
+			} else {
+				statusStr := "pending"
+				if p.Status == goals.StatusInProgress {
+					statusStr = "in progress"
+				} else if p.Status == goals.StatusComplete {
+					statusStr = "complete"
+				} else if p.Status == goals.StatusBlocked {
+					statusStr = "blocked"
+				}
+				output.Print("  %s: [%s] (no plan items)", p.Goal.Description, statusStr)
+			}
+		}
+
+		// Show next goal to work on
+		next := goalMgr.GetNextGoalToWork()
+		if next != nil {
+			output.Print("")
+			output.Info("Next goal to work on: %s (priority: %d)", next.Description, next.Priority)
+		}
+
+		return nil
+	}
+
+	// Handle -goal flag (add and decompose a new goal)
+	if cfg.Goal != "" {
+		output.Header("Adding Goal")
+		output.Info("Goal: %s", cfg.Goal)
+		output.Info("Priority: %d", cfg.GoalPriority)
+
+		// Create the goal
+		goal, err := goalMgr.AddGoalFromDescription(cfg.Goal, cfg.GoalPriority)
+		if err != nil {
+			return fmt.Errorf("failed to add goal: %w", err)
+		}
+
+		// Save goals file
+		if err := goalMgr.SaveGoals(); err != nil {
+			output.Warn("Failed to save goals file: %v", err)
+		}
+
+		output.Success("Goal added with ID: %s", goal.ID)
+
+		// Decompose the goal if we have an agent
+		if _, err := exec.LookPath(cfg.AgentCmd); err == nil {
+			output.Print("")
+			output.SubHeader("Decomposing Goal into Plan Items")
+
+			if err := decomposeGoal(cfg, output, goalMgr, goal); err != nil {
+				output.Warn("Failed to decompose goal: %v", err)
+				output.Print("You can try again later with: %s -decompose-goal %s", os.Args[0], goal.ID)
+			}
+		} else {
+			output.Print("")
+			output.Info("Agent not found. To decompose this goal into plan items, run:")
+			output.Print("  %s -decompose-goal %s", os.Args[0], goal.ID)
+		}
+
+		return nil
+	}
+
+	// Handle -decompose-goal flag
+	if cfg.DecomposeGoal != "" {
+		goal := goalMgr.GetGoalByID(cfg.DecomposeGoal)
+		if goal == nil {
+			return fmt.Errorf("goal with ID %q not found", cfg.DecomposeGoal)
+		}
+
+		output.Header("Decomposing Goal")
+		output.Info("Goal: %s", goal.Description)
+
+		if err := decomposeGoal(cfg, output, goalMgr, goal); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	// Handle -decompose-all flag
+	if cfg.DecomposeAll {
+		pendingGoals := goalMgr.GetPendingGoals()
+		if len(pendingGoals) == 0 {
+			output.Info("No pending goals to decompose")
+			return nil
+		}
+
+		output.Header("Decomposing All Pending Goals")
+		output.Info("Goals to decompose: %d", len(pendingGoals))
+
+		for _, goal := range pendingGoals {
+			output.SubHeader("Goal: %s", goal.Description)
+			goalRef := goalMgr.GetGoalByID(goal.ID) // Get pointer
+			if err := decomposeGoal(cfg, output, goalMgr, goalRef); err != nil {
+				output.Error("Failed to decompose goal %q: %v", goal.ID, err)
+				continue
+			}
+			output.Print("")
+		}
+
+		return nil
+	}
+
+	return nil
+}
+
+// decomposeGoal decomposes a single goal into plan items using the AI agent
+func decomposeGoal(cfg *config.Config, output *ui.UI, goalMgr *goals.Manager, goal *goals.Goal) error {
+	// Load current plans
+	var existingPlans []plan.Plan
+	if _, err := os.Stat(cfg.PlanFile); err == nil {
+		existingPlans, _ = plan.ReadFile(cfg.PlanFile)
+	}
+
+	// Get absolute path for output
+	outputPath, err := filepath.Abs(cfg.PlanFile)
+	if err != nil {
+		outputPath = cfg.PlanFile
+	}
+
+	// Build the decomposition prompt
+	decomposePrompt := goals.BuildGoalDecompositionPrompt(goal, existingPlans, outputPath)
+
+	if cfg.Verbose {
+		output.Debug("Prompt: %s", decomposePrompt)
+	}
+
+	// Show spinner during agent execution
+	var spinner *ui.Spinner
+	if output.IsTTY() && !cfg.Quiet && !cfg.JSONOutput {
+		spinner = output.NewSpinner("Decomposing goal with AI agent...")
+		spinner.Start()
+	}
+
+	// Execute the agent
+	result, err := agent.Execute(cfg, decomposePrompt)
+
+	if spinner != nil {
+		spinner.Stop()
+	}
+
+	if err != nil {
+		return fmt.Errorf("agent execution failed: %w", err)
+	}
+
+	// Parse the result
+	decompResult, err := goals.ParseDecompositionResult(result, goal)
+	if err != nil {
+		output.Debug("Raw agent output: %s", result)
+		return fmt.Errorf("failed to parse decomposition result: %w", err)
+	}
+
+	if !decompResult.Success || len(decompResult.GeneratedPlans) == 0 {
+		// Try to extract from file if agent wrote directly
+		if _, err := os.Stat(outputPath); err == nil {
+			updatedPlans, readErr := plan.ReadFile(outputPath)
+			if readErr == nil && len(updatedPlans) > len(existingPlans) {
+				// Plans were written directly
+				newCount := len(updatedPlans) - len(existingPlans)
+				output.Success("Generated %d plan items (written directly by agent)", newCount)
+				
+				// Link new plan IDs to the goal
+				for i := len(existingPlans); i < len(updatedPlans); i++ {
+					goalMgr.LinkPlanToGoal(goal.ID, updatedPlans[i].ID)
+				}
+				
+				// Update goal status
+				goal.Status = goals.StatusInProgress
+				goalMgr.UpdateGoal(*goal)
+				goalMgr.SaveGoals()
+				
+				return nil
+			}
+		}
+		
+		output.Debug("Raw agent output: %s", result)
+		return fmt.Errorf("decomposition produced no plan items: %s", decompResult.Message)
+	}
+
+	// Merge with existing plans
+	mergedPlans := goals.MergePlans(existingPlans, decompResult.GeneratedPlans)
+
+	// Write the merged plan file
+	if err := plan.WriteFile(cfg.PlanFile, mergedPlans); err != nil {
+		return fmt.Errorf("failed to write plan file: %w", err)
+	}
+
+	// Link generated plans to the goal
+	for _, p := range decompResult.GeneratedPlans {
+		goalMgr.LinkPlanToGoal(goal.ID, p.ID)
+	}
+
+	// Update goal status
+	goal.Status = goals.StatusInProgress
+	goalMgr.UpdateGoal(*goal)
+	goalMgr.SaveGoals()
+
+	output.Success("Generated %d plan items", len(decompResult.GeneratedPlans))
+	
+	// Print generated plan items
+	output.Print("")
+	output.Print("Generated plan items:")
+	for _, p := range decompResult.GeneratedPlans {
+		output.Print("  %d. [%s] %s", p.ID, p.Category, p.Description)
+	}
+
+	// Log to progress file
+	progressMsg := fmt.Sprintf("GOAL DECOMPOSED: %q -> %d plan items (IDs: %v)",
+		goal.Description, len(decompResult.GeneratedPlans), getIDs(decompResult.GeneratedPlans))
+	appendProgress(cfg.ProgressFile, progressMsg)
+
+	return nil
+}
+
+// getIDs extracts IDs from a slice of plans
+func getIDs(plans []plan.Plan) []int {
+	ids := make([]int, len(plans))
+	for i, p := range plans {
+		ids[i] = p.ID
+	}
+	return ids
 }

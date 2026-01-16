@@ -248,7 +248,7 @@
             "Document goal system in README"
         ],
         "expected_output": "Users can specify high-level goals like 'add payments' and Ralph automatically decomposes them into actionable plans and iterations",
-        "tested": false
+        "tested": true
     },
     {
         "id": 13,

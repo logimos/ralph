@@ -70,6 +70,9 @@ type FileConfig struct {
 	AutoReplan      bool   `json:"auto_replan,omitempty" yaml:"auto_replan,omitempty"`           // Enable automatic replanning
 	ReplanStrategy  string `json:"replan_strategy,omitempty" yaml:"replan_strategy,omitempty"`   // Replanning strategy: incremental, agent
 	ReplanThreshold int    `json:"replan_threshold,omitempty" yaml:"replan_threshold,omitempty"` // Consecutive failures before replanning
+
+	// Goal settings
+	GoalsFile string `json:"goals_file,omitempty" yaml:"goals_file,omitempty"` // Path to goals file
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -359,6 +362,11 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.ReplanThreshold > 0 && cfg.ReplanThreshold == DefaultReplanThreshold {
 		cfg.ReplanThreshold = fileCfg.ReplanThreshold
+	}
+
+	// Apply goal settings
+	if fileCfg.GoalsFile != "" && cfg.GoalsFile == DefaultGoalsFile {
+		cfg.GoalsFile = fileCfg.GoalsFile
 	}
 }
 

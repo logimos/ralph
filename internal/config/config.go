@@ -28,6 +28,8 @@ const (
 	DefaultReplanStrategy = "incremental"
 	// DefaultReplanThreshold is the default number of consecutive failures before replanning
 	DefaultReplanThreshold = 3
+	// DefaultGoalsFile is the default path for the goals file
+	DefaultGoalsFile = "goals.json"
 )
 
 // Config holds the application configuration
@@ -84,6 +86,14 @@ type Config struct {
 	// Validation configuration
 	Validate        bool // Run validations for all completed features
 	ValidateFeature int  // Validate a specific feature by ID
+	// Goal-oriented configuration
+	GoalsFile     string // Path to goals file (default: goals.json)
+	Goal          string // Single goal to add and decompose
+	GoalPriority  int    // Priority for the goal (when using -goal)
+	GoalStatus    bool   // Show status of all goals
+	ListGoals     bool   // List all goals
+	DecomposeGoal string // Decompose a specific goal by ID
+	DecomposeAll  bool   // Decompose all pending goals
 }
 
 // New creates a new Config with default values
@@ -103,5 +113,6 @@ func New() *Config {
 		AutoReplan:       DefaultAutoReplan,
 		ReplanStrategy:   DefaultReplanStrategy,
 		ReplanThreshold:  DefaultReplanThreshold,
+		GoalsFile:        DefaultGoalsFile,
 	}
 }
