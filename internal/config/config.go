@@ -105,6 +105,7 @@ type Config struct {
 	EnableMultiAgent bool   // Enable multi-agent mode
 	// Plan analysis configuration
 	AnalyzePlan bool // Analyze plan for refinement suggestions
+	RefinePlan  bool // Refine plan by splitting complex features
 }
 
 // New creates a new Config with default values

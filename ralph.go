@@ -159,6 +159,15 @@ func main() {
 		return
 	}
 
+	// Handle plan refinement command
+	if cfg.RefinePlan {
+		if err := handleRefinePlanCommand(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -245,6 +254,7 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Enable multi-agent collaboration mode")
 	// Plan analysis flags
 	flag.BoolVar(&cfg.AnalyzePlan, "analyze-plan", false, "Analyze plan for refinement suggestions")
+	flag.BoolVar(&cfg.RefinePlan, "refine-plan", false, "Refine plan by splitting complex features (rewrites plan.json)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -435,8 +445,8 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    -agents <path>            Path to agents configuration file\n")
 		fmt.Fprintf(os.Stderr, "    -parallel-agents <n>      Maximum parallel agents (default: 2)\n")
 		fmt.Fprintf(os.Stderr, "    -list-agents              List configured agents\n")
-		fmt.Fprintf(os.Stderr, "\nPlan Analysis:\n")
-		fmt.Fprintf(os.Stderr, "  Ralph can analyze your plan.json for potential refinement issues.\n")
+		fmt.Fprintf(os.Stderr, "\nPlan Analysis & Refinement:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph can analyze and refine your plan.json for better organization.\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Analysis detects:\n")
 		fmt.Fprintf(os.Stderr, "    - Compound features: Descriptions with 'and' suggesting multiple features\n")
@@ -444,6 +454,7 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Commands:\n")
 		fmt.Fprintf(os.Stderr, "    -analyze-plan          Analyze plan and suggest refinements\n")
+		fmt.Fprintf(os.Stderr, "    -refine-plan           Refine plan by splitting complex features (rewrites plan.json)\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -478,6 +489,7 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -list-agents                     # Show configured agents\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -multi-agent -iterations 5       # Run with multi-agent collaboration\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -analyze-plan                    # Analyze plan for refinement suggestions\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -refine-plan                     # Refine plan by splitting complex features\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -2182,6 +2194,45 @@ func handleAnalyzePlanCommand(cfg *config.Config) error {
 
 	// Print formatted result
 	fmt.Print(plan.FormatAnalysisResult(result))
+
+	return nil
+}
+
+// handleRefinePlanCommand refines the plan by splitting complex features
+func handleRefinePlanCommand(cfg *config.Config) error {
+	// Check if plan file exists
+	if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
+		return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
+	}
+
+	// Load plans
+	plans, err := plan.ReadFile(cfg.PlanFile)
+	if err != nil {
+		return fmt.Errorf("failed to load plan file: %w", err)
+	}
+
+	// Create a backup before modifying
+	backupPath := cfg.PlanFile + ".bak"
+	if err := plan.WriteFile(backupPath, plans); err != nil {
+		return fmt.Errorf("failed to create backup: %w", err)
+	}
+
+	// Refine plans
+	result := plan.RefinePlans(plans)
+
+	// Only write if changes were made
+	if result.SplitFeatures > 0 {
+		if err := plan.WriteFile(cfg.PlanFile, result.NewPlans); err != nil {
+			return fmt.Errorf("failed to write refined plan: %w", err)
+		}
+		fmt.Printf("Backup saved to: %s\n\n", backupPath)
+	} else {
+		// Remove backup if no changes
+		os.Remove(backupPath)
+	}
+
+	// Print formatted result
+	fmt.Print(plan.FormatRefinementResult(result))
 
 	return nil
 }

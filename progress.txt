@@ -1138,3 +1138,89 @@ Issues found: 12
 - Consider adding a "fix" mode that generates suggested split plans
 - The PRD is now COMPLETE - all 16 features have been implemented and tested
 
+## 2026-01-19: Plan Rewriting / Refinement (Feature #17)
+
+### Completed
+- Implemented plan rewriting functionality that actually modifies plan.json:
+  - Added `RefinePlan` flag to Config struct in `internal/config/config.go`
+  - Added `-refine-plan` CLI flag to ralph.go
+  - Implemented `RefinePlans()` function in `internal/plan/analyze.go`
+  - Implemented `splitComplexFeature()` to split features with >9 steps based on theme groupings
+  - Implemented `splitCompoundFeature()` to split compound features (e.g., "Add X and add Y")
+  - Implemented `FormatRefinementResult()` for displaying refinement results
+  - Added `handleRefinePlanCommand()` in ralph.go with backup creation
+- Added comprehensive test suite with 15+ new tests in `analyze_test.go`:
+  - Tests for empty plans, well-structured plans, and mixed plans
+  - Tests for skipping already-tested features
+  - Tests for splitting complex features
+  - Tests for splitting compound features
+  - Tests for preserving IDs, milestones, and categories
+  - Tests for formatting refinement results
+- Updated CLI help text with new `-refine-plan` flag documentation
+- All 290+ tests passing
+
+### Package Structure
+```
+internal/plan/
+├── plan.go         # Existing plan operations
+├── analyze.go      # Plan analysis AND refinement (new functions added)
+└── analyze_test.go # Tests for analysis AND refinement
+```
+
+### New Functions
+| Function | Description |
+|----------|-------------|
+| `RefinePlans()` | Main entry point - refines plans by splitting complex features |
+| `splitComplexFeature()` | Splits features with >9 steps based on theme groupings |
+| `splitCompoundFeature()` | Splits compound features with "verb X and verb Y" pattern |
+| `FormatRefinementResult()` | Formats refinement results for display |
+
+### Example Usage
+```bash
+# Analyze plan (suggestions only, no changes)
+./ralph -analyze-plan
+
+# Refine plan (actually rewrites plan.json)
+./ralph -refine-plan
+```
+
+### Example Output
+```
+Backup saved to: plan.json.bak
+
+=== Plan Refinement Report ===
+
+Original plans: 15
+Refined plans: 20
+Features split: 4
+Skipped (already tested): 11
+
+--- Changes Made ---
+  • Split feature #12 (11 steps) into 3 smaller features
+  • Split compound feature #14 into 2 separate features
+
+--- Summary ---
+The plan.json file has been updated with the refined features.
+Smaller features are easier to:
+  • Implement incrementally
+  • Test in isolation
+  • Review and debug
+  • Recover from failures
+```
+
+### Key Features
+- **Backup creation**: Creates `plan.json.bak` before modifying
+- **Preserves tested features**: Only splits untested features
+- **Preserves metadata**: Category, milestone, milestone_order are inherited
+- **ID management**: New IDs start after max existing ID
+- **Theme-based splitting**: Uses keyword matching to group steps by theme
+- **Compound detection**: Only splits true compound features (verb X and verb Y)
+
+### Notes for Next Developer
+- Refinement only modifies untested features (tested features are skipped)
+- Backup is only kept if changes were made
+- Complex features are split based on step theme groupings (setup, implementation, testing, etc.)
+- Compound features require both parts to start with action verbs to be split
+- New plan IDs are assigned sequentially starting from max(existingIDs) + 1
+- The PRD (all 17 features) is now COMPLETE
+

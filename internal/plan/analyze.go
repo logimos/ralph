@@ -346,3 +346,247 @@ func GetPlanAnalysisSummary(result *AnalysisResult) string {
 	return fmt.Sprintf("Plan analysis: %d plans, %d issues (%d compound, %d complex)",
 		result.TotalPlans, result.IssuesFound, result.CompoundFeatures, result.ComplexFeatures)
 }
+
+// RefinementResult represents the result of refining plans
+type RefinementResult struct {
+	OriginalCount  int      // Number of original plans
+	RefinedCount   int      // Number of plans after refinement
+	SplitFeatures  int      // Number of features that were split
+	SkippedFeatures int     // Number of features skipped (already tested)
+	NewPlans       []Plan   // The refined plans
+	Changes        []string // Description of changes made
+}
+
+// RefinePlans refines a list of plans by splitting complex features
+// It only splits untested features to avoid disrupting completed work
+func RefinePlans(plans []Plan) *RefinementResult {
+	result := &RefinementResult{
+		OriginalCount: len(plans),
+		NewPlans:      []Plan{},
+		Changes:       []string{},
+	}
+
+	// Track the next available ID
+	maxID := 0
+	for _, p := range plans {
+		if p.ID > maxID {
+			maxID = p.ID
+		}
+	}
+	nextID := maxID + 1
+
+	for _, plan := range plans {
+		// Skip already tested features - don't split them
+		if plan.Tested {
+			result.NewPlans = append(result.NewPlans, plan)
+			result.SkippedFeatures++
+			continue
+		}
+
+		// Check if this plan should be split
+		shouldSplit := false
+		var splitPlans []Plan
+
+		// Check for complex features (>9 steps)
+		if len(plan.Steps) > 9 {
+			splitPlans = splitComplexFeature(plan, &nextID)
+			if len(splitPlans) > 1 {
+				shouldSplit = true
+				result.Changes = append(result.Changes,
+					fmt.Sprintf("Split feature #%d (%d steps) into %d smaller features",
+						plan.ID, len(plan.Steps), len(splitPlans)))
+			}
+		}
+
+		// Check for compound features if not already split
+		if !shouldSplit && isCompoundFeature(plan.Description) {
+			splitPlans = splitCompoundFeature(plan, &nextID)
+			if len(splitPlans) > 1 {
+				shouldSplit = true
+				result.Changes = append(result.Changes,
+					fmt.Sprintf("Split compound feature #%d into %d separate features",
+						plan.ID, len(splitPlans)))
+			}
+		}
+
+		if shouldSplit {
+			result.NewPlans = append(result.NewPlans, splitPlans...)
+			result.SplitFeatures++
+		} else {
+			result.NewPlans = append(result.NewPlans, plan)
+		}
+	}
+
+	result.RefinedCount = len(result.NewPlans)
+	return result
+}
+
+// splitComplexFeature splits a complex feature into smaller features based on step groupings
+func splitComplexFeature(plan Plan, nextID *int) []Plan {
+	groups := groupStepsByTheme(plan.Steps)
+
+	// If we can't meaningfully split, return original
+	if len(groups) < 2 {
+		return []Plan{plan}
+	}
+
+	// Filter out groups that are too small
+	validGroups := []StepGroup{}
+	for _, g := range groups {
+		if len(g.Steps) >= 2 {
+			validGroups = append(validGroups, g)
+		}
+	}
+
+	// If we don't have at least 2 valid groups, don't split
+	if len(validGroups) < 2 {
+		return []Plan{plan}
+	}
+
+	// Create new plans from groups
+	newPlans := []Plan{}
+	for i, group := range validGroups {
+		// Create descriptive title for the new feature
+		newDesc := fmt.Sprintf("%s - %s", plan.Description, group.Theme)
+		if i == 0 {
+			newDesc = fmt.Sprintf("%s (Part %d: %s)", plan.Description, i+1, group.Theme)
+		} else {
+			newDesc = fmt.Sprintf("%s (Part %d: %s)", plan.Description, i+1, group.Theme)
+		}
+
+		newPlan := Plan{
+			ID:             *nextID,
+			Category:       plan.Category,
+			Description:    newDesc,
+			Steps:          group.Steps,
+			ExpectedOutput: plan.ExpectedOutput,
+			Tested:         false,
+			Milestone:      plan.Milestone,
+			MilestoneOrder: plan.MilestoneOrder,
+		}
+		newPlans = append(newPlans, newPlan)
+		*nextID++
+	}
+
+	return newPlans
+}
+
+// splitCompoundFeature splits a compound feature into separate features
+func splitCompoundFeature(plan Plan, nextID *int) []Plan {
+	lower := strings.ToLower(plan.Description)
+	parts := strings.Split(lower, " and ")
+
+	// If we can't meaningfully split, return original
+	if len(parts) < 2 {
+		return []Plan{plan}
+	}
+
+	// Check that both parts have action verbs (true compound)
+	actionVerbs := []string{"add", "create", "implement", "build", "setup", "configure", "enable", "integrate", "develop", "design"}
+	firstPart := strings.TrimSpace(parts[0])
+	secondPart := strings.TrimSpace(parts[1])
+
+	firstHasVerb := false
+	secondHasVerb := false
+
+	for _, verb := range actionVerbs {
+		if strings.HasPrefix(firstPart, verb+" ") {
+			firstHasVerb = true
+		}
+		if strings.HasPrefix(secondPart, verb+" ") {
+			secondHasVerb = true
+		}
+	}
+
+	// Only split if both parts start with action verbs
+	if !firstHasVerb || !secondHasVerb {
+		return []Plan{plan}
+	}
+
+	// Distribute steps evenly between the two new features
+	stepsPerFeature := len(plan.Steps) / 2
+	if stepsPerFeature < 1 {
+		stepsPerFeature = 1
+	}
+
+	// Create first feature
+	firstSteps := plan.Steps
+	if len(plan.Steps) > stepsPerFeature {
+		firstSteps = plan.Steps[:stepsPerFeature]
+	}
+
+	firstDesc := strings.TrimSpace(parts[0])
+	// Capitalize first letter
+	if len(firstDesc) > 0 {
+		firstDesc = strings.ToUpper(string(firstDesc[0])) + firstDesc[1:]
+	}
+
+	firstPlan := Plan{
+		ID:             *nextID,
+		Category:       plan.Category,
+		Description:    firstDesc,
+		Steps:          firstSteps,
+		ExpectedOutput: plan.ExpectedOutput,
+		Tested:         false,
+		Milestone:      plan.Milestone,
+		MilestoneOrder: plan.MilestoneOrder,
+	}
+	*nextID++
+
+	// Create second feature
+	secondSteps := []string{}
+	if len(plan.Steps) > stepsPerFeature {
+		secondSteps = plan.Steps[stepsPerFeature:]
+	}
+
+	secondDesc := strings.TrimSpace(parts[1])
+	// Capitalize first letter
+	if len(secondDesc) > 0 {
+		secondDesc = strings.ToUpper(string(secondDesc[0])) + secondDesc[1:]
+	}
+
+	secondPlan := Plan{
+		ID:             *nextID,
+		Category:       plan.Category,
+		Description:    secondDesc,
+		Steps:          secondSteps,
+		ExpectedOutput: plan.ExpectedOutput,
+		Tested:         false,
+		Milestone:      plan.Milestone,
+		MilestoneOrder: plan.MilestoneOrder,
+	}
+	*nextID++
+
+	return []Plan{firstPlan, secondPlan}
+}
+
+// FormatRefinementResult formats a refinement result for display
+func FormatRefinementResult(result *RefinementResult) string {
+	var sb strings.Builder
+
+	sb.WriteString("=== Plan Refinement Report ===\n\n")
+	sb.WriteString(fmt.Sprintf("Original plans: %d\n", result.OriginalCount))
+	sb.WriteString(fmt.Sprintf("Refined plans: %d\n", result.RefinedCount))
+	sb.WriteString(fmt.Sprintf("Features split: %d\n", result.SplitFeatures))
+	sb.WriteString(fmt.Sprintf("Skipped (already tested): %d\n", result.SkippedFeatures))
+
+	if len(result.Changes) == 0 {
+		sb.WriteString("\n✓ No refinements needed. All plans are well-structured.\n")
+		return sb.String()
+	}
+
+	sb.WriteString("\n--- Changes Made ---\n")
+	for _, change := range result.Changes {
+		sb.WriteString(fmt.Sprintf("  • %s\n", change))
+	}
+
+	sb.WriteString("\n--- Summary ---\n")
+	sb.WriteString("The plan.json file has been updated with the refined features.\n")
+	sb.WriteString("Smaller features are easier to:\n")
+	sb.WriteString("  • Implement incrementally\n")
+	sb.WriteString("  • Test in isolation\n")
+	sb.WriteString("  • Review and debug\n")
+	sb.WriteString("  • Recover from failures\n")
+
+	return sb.String()
+}
