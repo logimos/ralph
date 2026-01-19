@@ -21,6 +21,7 @@ Ralph is a Golang CLI application that automates iterative development workflows
 - **Adaptive Replanning**: Dynamically adjusts plans when tests fail repeatedly or requirements change
 - **Goal-Oriented Planning**: Define high-level goals and let AI decompose them into actionable plans
 - **Multi-Agent Collaboration**: Coordinate multiple AI agents (implementer, tester, reviewer, refactorer) working in parallel
+- **Plan Analysis**: Analyze plans for refinement opportunities (compound and complex features)
 
 ## Installation
 
@@ -2436,6 +2437,72 @@ The local build is useful for testing before pushing the tag, but the GitHub Act
 - An AI agent CLI tool (Cursor Agent, Claude, etc.)
 - Git (for commit functionality)
 - jq (optional, for Makefile plan status commands)
+
+## Plan Analysis and Refinement
+
+Ralph can analyze your plan.json to identify features that may benefit from refinement, helping you maintain well-structured and manageable tasks.
+
+### Running Analysis
+
+```bash
+ralph -analyze-plan
+```
+
+### What It Detects
+
+| Issue Type | Detection | Severity | Recommendation |
+|------------|-----------|----------|----------------|
+| **Compound Features** | Descriptions with "verb X and verb Y" pattern | Suggestion | Split into separate features |
+| **Complex Features** | Features with >9 steps | Warning | Break into smaller features |
+
+### Example Output
+
+```
+=== Plan Analysis Report ===
+
+Total plans analyzed: 16
+Issues found: 3
+  - Compound features (with 'and'): 1
+  - Complex features (>9 steps): 2
+
+[SUGGESTION] Feature #3: compound
+  Feature #3 description contains 'and', may represent multiple features
+  Suggestions:
+    Consider splitting into 2 separate features:
+      1. Add caching layer
+      2. Add rate limiting
+    Each feature should have a single, focused objective
+
+[WARNING] Feature #5: complex
+  Feature #5 has 12 steps (>9), may be too complex
+  Suggestions:
+    Feature has 12 steps - consider splitting into smaller features
+    Detected 4 potential logical groupings:
+      Group 1 (3 steps): setup/config
+      Group 2 (4 steps): implementation
+      Group 3 (3 steps): testing
+      Group 4 (2 steps): documentation
+    Recommended: Split into 2 smaller features with 4-5 steps each
+```
+
+### Why Refine Plans?
+
+Well-structured plans improve:
+- **Code review efficiency**: Smaller, focused changes are easier to review
+- **Testing reliability**: Isolated test cases for each feature
+- **Progress tracking**: More granular milestones show clearer progress
+- **Failure recovery**: Less work to redo if something fails
+
+### Acceptable "And" Patterns
+
+Not all "and" patterns indicate compound features. The analysis ignores common acceptable pairs:
+- "read and write" (complementary operations)
+- "authentication and authorization" (closely related security concepts)
+- "YAML and JSON" (format variations)
+- "search and filter" (single UI component)
+- "load and save" (file operations)
+
+The analysis is conservative, only flagging patterns like "Add X and add Y" where both parts clearly start with action verbs.
 
 ## FAQ
 

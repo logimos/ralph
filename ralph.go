@@ -150,6 +150,15 @@ func main() {
 		return
 	}
 
+	// Handle plan analysis command
+	if cfg.AnalyzePlan {
+		if err := handleAnalyzePlanCommand(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -234,6 +243,8 @@ func parseFlags() *config.Config {
 	flag.IntVar(&cfg.ParallelAgents, "parallel-agents", config.DefaultParallelAgents, "Maximum number of agents to run in parallel")
 	flag.BoolVar(&cfg.ListAgents, "list-agents", false, "List configured agents")
 	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Enable multi-agent collaboration mode")
+	// Plan analysis flags
+	flag.BoolVar(&cfg.AnalyzePlan, "analyze-plan", false, "Analyze plan for refinement suggestions")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -424,6 +435,15 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    -agents <path>            Path to agents configuration file\n")
 		fmt.Fprintf(os.Stderr, "    -parallel-agents <n>      Maximum parallel agents (default: 2)\n")
 		fmt.Fprintf(os.Stderr, "    -list-agents              List configured agents\n")
+		fmt.Fprintf(os.Stderr, "\nPlan Analysis:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph can analyze your plan.json for potential refinement issues.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Analysis detects:\n")
+		fmt.Fprintf(os.Stderr, "    - Compound features: Descriptions with 'and' suggesting multiple features\n")
+		fmt.Fprintf(os.Stderr, "    - Complex features: Features with >9 steps that may need splitting\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -analyze-plan          Analyze plan and suggest refinements\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -457,6 +477,7 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -decompose-goal auth             # Decompose specific goal\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-agents                     # Show configured agents\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -multi-agent -iterations 5       # Run with multi-agent collaboration\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -analyze-plan                    # Analyze plan for refinement suggestions\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -2141,6 +2162,28 @@ func getIDs(plans []plan.Plan) []int {
 		ids[i] = p.ID
 	}
 	return ids
+}
+
+// handleAnalyzePlanCommand analyzes the plan for refinement suggestions
+func handleAnalyzePlanCommand(cfg *config.Config) error {
+	// Check if plan file exists
+	if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
+		return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
+	}
+
+	// Load plans
+	plans, err := plan.ReadFile(cfg.PlanFile)
+	if err != nil {
+		return fmt.Errorf("failed to load plan file: %w", err)
+	}
+
+	// Analyze plans
+	result := plan.AnalyzePlans(plans)
+
+	// Print formatted result
+	fmt.Print(plan.FormatAnalysisResult(result))
+
+	return nil
 }
 
 // handleListAgents displays configured agents

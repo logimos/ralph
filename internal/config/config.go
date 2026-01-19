@@ -99,10 +99,12 @@ type Config struct {
 	DecomposeGoal string // Decompose a specific goal by ID
 	DecomposeAll  bool   // Decompose all pending goals
 	// Multi-agent configuration
-	AgentsFile     string // Path to multi-agent configuration file
-	ParallelAgents int    // Maximum number of agents to run in parallel
-	ListAgents     bool   // List configured agents
-	EnableMultiAgent bool // Enable multi-agent mode
+	AgentsFile       string // Path to multi-agent configuration file
+	ParallelAgents   int    // Maximum number of agents to run in parallel
+	ListAgents       bool   // List configured agents
+	EnableMultiAgent bool   // Enable multi-agent mode
+	// Plan analysis configuration
+	AnalyzePlan bool // Analyze plan for refinement suggestions
 }
 
 // New creates a new Config with default values

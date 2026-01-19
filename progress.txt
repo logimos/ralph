@@ -1072,5 +1072,69 @@ ralph/
 - Troubleshooting guide organized by problem category
 - Consider adding video tutorials or interactive examples in the future
 - Consider adding localization support for documentation
-- The PRD is now COMPLETE - all 15 features have been implemented and tested
+- The PRD was marked complete for 15 features, but Feature 16 remained
+
+## 2026-01-19: Plan Step Refinement (Feature #16)
+
+### Completed
+- Created `internal/plan/analyze.go` with plan analysis functionality:
+  - `AnalyzePlans()` function that analyzes plans for refinement issues
+  - `AnalysisResult` struct with totals and issue list
+  - `AnalysisIssue` struct for detailed issue reporting
+  - Compound feature detection (descriptions with "verb X and verb Y" pattern)
+  - Complex feature detection (features with >9 steps)
+  - Step grouping by theme (setup/config, implementation, testing, etc.)
+  - Suggestions for splitting complex features
+  - Formatted output with severity levels and recommendations
+- Created `internal/plan/analyze_test.go` with 15+ tests:
+  - Tests for compound feature detection
+  - Tests for complex feature detection
+  - Tests for step grouping
+  - Tests for output formatting
+- Added `-analyze-plan` CLI flag to ralph.go:
+  - Loads plan.json and runs analysis
+  - Outputs formatted report with suggestions
+- Added help documentation for plan analysis feature
+- All 280+ tests passing
+
+### Package Structure
+```
+internal/plan/
+├── plan.go         # Existing plan operations
+├── analyze.go      # NEW: Plan analysis and refinement
+└── analyze_test.go # NEW: Tests for analysis
+```
+
+### Analysis Checks
+| Issue Type | Detection | Severity |
+|------------|-----------|----------|
+| Compound | "verb X and verb Y" pattern | Suggestion |
+| Complex | >9 steps | Warning |
+
+### Example Output
+```
+=== Plan Analysis Report ===
+
+Total plans analyzed: 16
+Issues found: 12
+  - Compound features (with 'and'): 0
+  - Complex features (>9 steps): 12
+
+[WARNING] Feature #4: complex
+  Feature #4 has 11 steps (>9), may be too complex
+  Suggestions:
+    Feature has 11 steps - consider splitting into smaller features
+    Detected 5 potential logical groupings...
+```
+
+### Notes for Next Developer
+- Compound feature detection is conservative to avoid false positives
+- Only flags "verb X and verb Y" patterns, not acceptable pairs like "read and write"
+- Acceptable pairs are configurable in the `acceptablePairs` slice
+- Step grouping uses keyword matching for themes (setup, implementation, testing, etc.)
+- The analysis is purely informational - no automatic modifications
+- Run with `-analyze-plan` to see refinement suggestions for any plan.json
+- Consider adding automatic plan splitting in a future iteration
+- Consider adding a "fix" mode that generates suggested split plans
+- The PRD is now COMPLETE - all 16 features have been implemented and tested
 
