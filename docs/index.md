@@ -4,41 +4,29 @@ Ralph is a Golang CLI application that automates iterative development workflows
 
 ## Key Features
 
-<div class="grid cards" markdown>
+### Plan Management
 
--   :material-format-list-checks:{ .lg .middle } **Plan Management**
+Generate plans from notes, track features, and monitor progress with milestone-based tracking.
 
-    ---
+[Learn more about Plan Management →](features/plan-management.md)
 
-    Generate plans from notes, track features, and monitor progress with milestone-based tracking.
+### Failure Recovery
 
-    [:octicons-arrow-right-24: Learn more](features/plan-management.md)
+Intelligent two-tier failure handling with automatic retry, skip, and rollback strategies.
 
--   :material-refresh:{ .lg .middle } **Failure Recovery**
+[Learn more about Failure Recovery →](features/failure-recovery.md)
 
-    ---
+### Long-Running Memory
 
-    Intelligent two-tier failure handling with automatic retry, skip, and rollback strategies.
+Persistent memory for architectural decisions and coding conventions across sessions.
 
-    [:octicons-arrow-right-24: Learn more](features/failure-recovery.md)
+[Learn more about Memory →](features/memory.md)
 
--   :material-brain:{ .lg .middle } **Long-Running Memory**
+### Multi-Agent Collaboration
 
-    ---
+Coordinate multiple AI agents working in parallel for implementation, testing, and review.
 
-    Persistent memory for architectural decisions and coding conventions across sessions.
-
-    [:octicons-arrow-right-24: Learn more](features/memory.md)
-
--   :material-robot:{ .lg .middle } **Multi-Agent Collaboration**
-
-    ---
-
-    Coordinate multiple AI agents working in parallel for implementation, testing, and review.
-
-    [:octicons-arrow-right-24: Learn more](features/multi-agent.md)
-
-</div>
+[Learn more about Multi-Agent →](features/multi-agent.md)
 
 ## Quick Start
 

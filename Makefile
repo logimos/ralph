@@ -1,4 +1,4 @@
-.PHONY: build install install-local run clean test help jq-tested jq-untested jq-status release-major release-minor release-patch release
+.PHONY: build install install-local run clean test help jq-tested jq-untested jq-status release-major release-minor release-patch release docs-install docs-build docs-serve docs-clean
 
 # Variables
 BINARY_NAME=ralph
@@ -108,6 +108,35 @@ clean:
 	rm -f coverage.out
 	rm -f coverage.html
 	@echo "Clean complete"
+
+## docs-install: Install documentation dependencies
+docs-install:
+	@echo "Installing documentation dependencies..."
+	@pip3 install mkdocs-material mkdocs-minify-plugin pymdown-extensions || \
+	 pip install mkdocs-material mkdocs-minify-plugin pymdown-extensions || \
+	 (echo "Error: Could not install dependencies. Try: pip3 install mkdocs-material mkdocs-minify-plugin pymdown-extensions" && exit 1)
+	@echo "Documentation dependencies installed"
+
+## docs-build: Build documentation site
+docs-build:
+	@echo "Building documentation..."
+	@python3 -m mkdocs build --strict || \
+	 (echo "Error: Build failed. Try running 'make docs-install' first to install dependencies." && exit 1)
+	@echo "Documentation built in site/"
+
+## docs-serve: Serve documentation locally for testing
+docs-serve:
+	@echo "Starting local documentation server..."
+	@echo "Documentation will be available at http://127.0.0.1:8000"
+	@echo "Press Ctrl+C to stop the server"
+	@python3 -m mkdocs serve || \
+	 (echo "Error: Could not start server. Try running 'make docs-install' first to install dependencies." && exit 1)
+
+## docs-clean: Remove built documentation
+docs-clean:
+	@echo "Cleaning documentation build..."
+	rm -rf site/
+	@echo "Documentation build cleaned"
 
 ## tidy: Tidy go.mod
 tidy:
@@ -226,4 +255,8 @@ help:
 	@echo "  make release-major                            # Create major release (v1.0.0 -> v2.0.0)"
 	@echo "  make release-minor                            # Create minor release (v1.0.0 -> v1.1.0)"
 	@echo "  make release-patch                            # Create patch release (v1.0.0 -> v1.0.1)"
+	@echo "  make docs-install                             # Install documentation dependencies"
+	@echo "  make docs-build                               # Build documentation site"
+	@echo "  make docs-serve                               # Serve documentation locally (http://127.0.0.1:8000)"
+	@echo "  make docs-clean                               # Remove built documentation"
 

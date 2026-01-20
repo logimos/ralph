@@ -3,9 +3,10 @@
 
 site_name: Ralph
 site_description: AI-Assisted Development Workflow CLI
-site_url: https://start-it.github.io/ralph
-repo_url: https://github.com/start-it/ralph
-repo_name: start-it/ralph
+site_url: https://logimos.github.io/ralph/
+site_author: logimos
+repo_url: https://github.com/logimos/ralph
+repo_name: logimos/ralph
 
 # Theme configuration
 theme:

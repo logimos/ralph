@@ -46,6 +46,9 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        # Note: GitHub Pages must be enabled in repository Settings > Pages
+        # and configured to use "GitHub Actions" as the source.
+        # For private repos, Pages is available but must be manually enabled first.
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
