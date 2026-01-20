@@ -95,8 +95,9 @@ type Config struct {
 	GoalsFile     string // Path to goals file (default: goals.json)
 	Goal          string // Single goal to add and decompose
 	GoalPriority  int    // Priority for the goal (when using -goal)
-	GoalStatus    bool   // Show status of all goals
-	ListGoals     bool   // List all goals
+	ShowGoals     bool   // Show all goals with progress (unified view)
+	GoalStatus    bool   // Deprecated: Use ShowGoals instead
+	ListGoals     bool   // Deprecated: Use ShowGoals instead
 	DecomposeGoal string // Decompose a specific goal by ID
 	DecomposeAll  bool   // Decompose all pending goals
 	// Multi-agent configuration

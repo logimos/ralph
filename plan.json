@@ -380,7 +380,7 @@
             "Add migration note for users using the deprecated flag"
         ],
         "expected_output": "Goal-related display commands are unified into a single intuitive flag, matching the -milestones pattern",
-        "tested": false
+        "tested": true
     },
     {
         "id": 21,

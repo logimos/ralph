@@ -91,7 +91,7 @@ func getFlagGroups() []flagGroup {
 		{
 			name:        "Goal-Oriented Planning",
 			description: "Decompose high-level goals into actionable plans",
-			flags:       []string{"goals-file", "goal", "goal-priority", "goal-status", "list-goals", "decompose-goal", "decompose-all"},
+			flags:       []string{"goals-file", "goal", "goal-priority", "goals", "decompose-goal", "decompose-all"},
 		},
 		{
 			name:        "Validation",
@@ -315,7 +315,7 @@ func main() {
 	}
 
 	// Handle goal commands
-	if cfg.Goal != "" || cfg.GoalStatus || cfg.ListGoals || cfg.DecomposeGoal != "" || cfg.DecomposeAll {
+	if cfg.Goal != "" || cfg.ShowGoals || cfg.GoalStatus || cfg.ListGoals || cfg.DecomposeGoal != "" || cfg.DecomposeAll {
 		if err := handleGoalCommands(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -426,8 +426,9 @@ func parseFlags() *config.Config {
 	flag.StringVar(&cfg.GoalsFile, "goals-file", config.DefaultGoalsFile, "Path to goals file")
 	flag.StringVar(&cfg.Goal, "goal", "", "Add a high-level goal to decompose into plan items")
 	flag.IntVar(&cfg.GoalPriority, "goal-priority", 5, "Priority for the goal (higher = more important)")
-	flag.BoolVar(&cfg.GoalStatus, "goal-status", false, "Show progress toward all goals")
-	flag.BoolVar(&cfg.ListGoals, "list-goals", false, "List all goals")
+	flag.BoolVar(&cfg.ShowGoals, "goals", false, "Show all goals with progress")
+	flag.BoolVar(&cfg.GoalStatus, "goal-status", false, "[Deprecated: use -goals] Show progress toward all goals")
+	flag.BoolVar(&cfg.ListGoals, "list-goals", false, "[Deprecated: use -goals] List all goals")
 	flag.StringVar(&cfg.DecomposeGoal, "decompose-goal", "", "Decompose a specific goal by ID into plan items")
 	flag.BoolVar(&cfg.DecomposeAll, "decompose-all", false, "Decompose all pending goals into plan items")
 	// Multi-agent flags
@@ -598,10 +599,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    }\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -goals                    Show all goals with progress\n")
 		fmt.Fprintf(os.Stderr, "    -goal <description>       Add a goal and decompose it into plan items\n")
 		fmt.Fprintf(os.Stderr, "    -goal-priority <n>        Set priority for the goal (default: 5)\n")
-		fmt.Fprintf(os.Stderr, "    -goal-status              Show progress toward all goals\n")
-		fmt.Fprintf(os.Stderr, "    -list-goals               List all goals\n")
 		fmt.Fprintf(os.Stderr, "    -decompose-goal <id>      Decompose a specific goal into plan items\n")
 		fmt.Fprintf(os.Stderr, "    -decompose-all            Decompose all pending goals\n")
 		fmt.Fprintf(os.Stderr, "    -goals-file <path>        Use custom goals file\n")
@@ -667,8 +667,7 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -validate                        # Run validations for completed features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -validate-feature 5              # Validate specific feature\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -goal \"Add user authentication with OAuth\"  # Add and decompose goal\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -goal-status                     # Show progress toward goals\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -list-goals                      # List all goals\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -goals                           # Show all goals with progress\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -decompose-goal auth             # Decompose specific goal\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-agents                     # Show configured agents\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -multi-agent -iterations 5       # Run with multi-agent collaboration\n", os.Args[0])
@@ -689,6 +688,16 @@ func parseFlags() *config.Config {
 	if cfg.ListStatus {
 		fmt.Fprintf(os.Stderr, "Warning: -status is deprecated. Use -list-all instead.\n")
 		cfg.ListAll = true
+	}
+
+	// Handle deprecated goal-related flags
+	if cfg.ListGoals {
+		fmt.Fprintf(os.Stderr, "Warning: -list-goals is deprecated. Use -goals instead.\n")
+		cfg.ShowGoals = true
+	}
+	if cfg.GoalStatus {
+		fmt.Fprintf(os.Stderr, "Warning: -goal-status is deprecated. Use -goals instead.\n")
+		cfg.ShowGoals = true
 	}
 
 	return cfg
@@ -2107,8 +2116,8 @@ func handleGoalCommands(cfg *config.Config) error {
 		output.Warn("Failed to load goals: %v", err)
 	}
 
-	// Handle -list-goals flag
-	if cfg.ListGoals {
+	// Handle -goals flag (unified view of all goals with progress)
+	if cfg.ShowGoals {
 		if !goalMgr.HasGoals() {
 			fmt.Println("No goals defined.")
 			fmt.Println()
@@ -2128,33 +2137,53 @@ func handleGoalCommands(cfg *config.Config) error {
 			return nil
 		}
 
-		fmt.Println(goalMgr.Summary())
-		return nil
-	}
+		output.Header("Goals")
+		allProgress := goalMgr.CalculateAllProgress()
 
-	// Handle -goal-status flag
-	if cfg.GoalStatus {
-		if !goalMgr.HasGoals() {
-			fmt.Println("No goals defined.")
-			return nil
+		// Group goals by status for better organization
+		var active, pending, completed, blocked []*goals.GoalProgress
+		for _, p := range allProgress {
+			switch p.Status {
+			case goals.StatusInProgress:
+				active = append(active, p)
+			case goals.StatusPending:
+				pending = append(pending, p)
+			case goals.StatusComplete:
+				completed = append(completed, p)
+			case goals.StatusBlocked:
+				blocked = append(blocked, p)
+			}
 		}
 
-		output.Header("Goal Progress")
-		allProgress := goalMgr.CalculateAllProgress()
-		
-		for _, p := range allProgress {
-			if p.TotalPlanItems > 0 {
-				output.Print("  %s: %s", p.Goal.Description, goals.FormatProgressBar(p, 20))
-			} else {
-				statusStr := "pending"
-				if p.Status == goals.StatusInProgress {
-					statusStr = "in progress"
-				} else if p.Status == goals.StatusComplete {
-					statusStr = "complete"
-				} else if p.Status == goals.StatusBlocked {
-					statusStr = "blocked"
-				}
-				output.Print("  %s: [%s] (no plan items)", p.Goal.Description, statusStr)
+		// Print active goals first
+		if len(active) > 0 {
+			output.SubHeader("Active")
+			for _, p := range active {
+				printGoalProgress(output, p)
+			}
+		}
+
+		// Print pending goals
+		if len(pending) > 0 {
+			output.SubHeader("Pending")
+			for _, p := range pending {
+				printGoalProgress(output, p)
+			}
+		}
+
+		// Print blocked goals
+		if len(blocked) > 0 {
+			output.SubHeader("Blocked")
+			for _, p := range blocked {
+				printGoalProgress(output, p)
+			}
+		}
+
+		// Print completed goals
+		if len(completed) > 0 {
+			output.SubHeader("Completed")
+			for _, p := range completed {
+				printGoalProgress(output, p)
 			}
 		}
 
@@ -2247,6 +2276,29 @@ func handleGoalCommands(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// printGoalProgress prints a single goal with its progress information
+func printGoalProgress(output *ui.UI, p *goals.GoalProgress) {
+	// Status symbol
+	var statusSymbol string
+	switch p.Status {
+	case goals.StatusComplete:
+		statusSymbol = "●"
+	case goals.StatusInProgress:
+		statusSymbol = "◐"
+	case goals.StatusBlocked:
+		statusSymbol = "✕"
+	default:
+		statusSymbol = "○"
+	}
+
+	// Format the output with progress bar if there are plan items
+	if p.TotalPlanItems > 0 {
+		output.Print("  %s [%d] %s: %s", statusSymbol, p.Goal.Priority, p.Goal.Description, goals.FormatProgressBar(p, 20))
+	} else {
+		output.Print("  %s [%d] %s (no plan items)", statusSymbol, p.Goal.Priority, p.Goal.Description)
+	}
 }
 
 // decomposeGoal decomposes a single goal into plan items using the AI agent

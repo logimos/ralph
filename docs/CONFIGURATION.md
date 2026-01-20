@@ -228,12 +228,13 @@ enable_multi_agent: false
 | Option | CLI Flag | Config Key | Default | Description |
 |--------|----------|------------|---------|-------------|
 | Goals File | `-goals-file` | `goals_file` | `goals.json` | Goals file path |
+| Show Goals | `-goals` | N/A | N/A | Show all goals with progress |
 | Goal | `-goal` | N/A | N/A | Add a goal |
 | Goal Priority | `-goal-priority` | N/A | `5` | Priority for new goal |
-| Goal Status | `-goal-status` | N/A | N/A | Show goal progress |
-| List Goals | `-list-goals` | N/A | N/A | List all goals |
 | Decompose Goal | `-decompose-goal` | N/A | N/A | Decompose specific goal |
 | Decompose All | `-decompose-all` | N/A | N/A | Decompose all pending |
+
+> **Note**: The `-goal-status` and `-list-goals` flags are deprecated. Use `-goals` instead to show all goals with progress.
 
 ### Validation Options
 

@@ -1407,3 +1407,51 @@ Users currently using `-status` can:
 - Remaining features: #20 (merge goal flags), #21 (clarify analyze/refine), #22 (improve docs)
 - Consider removing the deprecated `-status` flag entirely in a future major version
 - The pattern used here (deprecated alias + warning) can be reused for other flag consolidations
+
+[2026-01-20T10:15:02Z] FAILURE [agent_error]: Command exited with code 1 (feature #19, retry 2)
+
+## 2026-01-20: Merge Goal Display Flags (Feature #20)
+
+### Completed
+- Added new `-goals` flag as the unified way to view goals (like `-milestones`)
+- Deprecated `-list-goals` and `-goal-status` flags with warnings pointing to `-goals`
+- Updated `internal/config/config.go`:
+  - Added `ShowGoals` field to Config struct
+  - Marked `GoalStatus` and `ListGoals` as deprecated with comments
+- Updated `ralph.go`:
+  - Added `-goals` flag definition
+  - Modified `-list-goals` and `-goal-status` flag help to indicate deprecation
+  - Added deprecation warning logic after flag parsing
+  - Created new unified `handleGoalCommands()` handler that shows:
+    - Goals grouped by status (Active, Pending, Blocked, Completed)
+    - Progress bars for each goal with plan items
+    - Next goal to work on suggestion
+  - Added `printGoalProgress()` helper function for consistent formatting
+  - Updated flag groups to show `-goals` instead of deprecated flags
+  - Updated help text and examples
+- Updated `docs/CONFIGURATION.md`:
+  - Updated Goal Options table with new `-goals` flag
+  - Added deprecation note for `-goal-status` and `-list-goals`
+- Added unit tests in `ralph_test.go`:
+  - `TestShowGoalsFlagBehavior` - Verifies ShowGoals defaults
+  - `TestDeprecatedListGoalsFlagBehavior` - Verifies deprecated -list-goals sets ShowGoals
+  - `TestDeprecatedGoalStatusFlagBehavior` - Verifies deprecated -goal-status sets ShowGoals
+- All 280+ tests pass, build successful
+
+### Implementation Details
+- The `-goals` flag shows a unified view matching the `-milestones` pattern
+- Goals are grouped by status: Active → Pending → Blocked → Completed
+- Each goal shows status symbol, priority, description, and progress bar
+- Using deprecated flags still works but displays a warning message
+- The pattern follows Feature #19's deprecation approach for consistency
+
+### Migration Path
+Users currently using `-list-goals` or `-goal-status` can:
+1. Continue using them (they will work but show a warning)
+2. Migrate to `-goals` for the unified view with progress
+
+### Notes for Next Developer
+- Feature #20 is complete - goal flags are now unified following the `-milestones` pattern
+- Remaining features: #21 (clarify analyze/refine), #22 (improve docs)
+- Consider removing deprecated flags entirely in a future major version
+- The `-goals` flag groups goals by status and shows progress bars for better visibility

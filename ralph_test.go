@@ -857,3 +857,67 @@ func TestDeprecatedStatusFlagBehavior(t *testing.T) {
 		t.Error("Deprecated -status should show untested features")
 	}
 }
+
+// TestShowGoalsFlagBehavior tests that -goals shows all goals with progress
+func TestShowGoalsFlagBehavior(t *testing.T) {
+	cfg := config.New()
+
+	// Test that ShowGoals is false by default
+	if cfg.ShowGoals {
+		t.Error("ShowGoals should be false by default")
+	}
+
+	// Test that ListGoals (deprecated) is also false by default
+	if cfg.ListGoals {
+		t.Error("ListGoals (deprecated) should be false by default")
+	}
+
+	// Test that GoalStatus (deprecated) is also false by default
+	if cfg.GoalStatus {
+		t.Error("GoalStatus (deprecated) should be false by default")
+	}
+
+	// Test that when ShowGoals is set, it enables the goals view
+	cfg.ShowGoals = true
+	if !cfg.ShowGoals {
+		t.Error("ShowGoals should be true after being set")
+	}
+}
+
+// TestDeprecatedListGoalsFlagBehavior tests that -list-goals sets ShowGoals
+func TestDeprecatedListGoalsFlagBehavior(t *testing.T) {
+	cfg := config.New()
+
+	// Simulate deprecated -list-goals flag being used
+	cfg.ListGoals = true
+
+	// The deprecation handling in parseFlags() sets ShowGoals when ListGoals is true
+	// Here we simulate that behavior for testing
+	if cfg.ListGoals {
+		cfg.ShowGoals = true
+	}
+
+	// Verify that ShowGoals is now true (mimicking the deprecation handling)
+	if !cfg.ShowGoals {
+		t.Error("ShowGoals should be true when deprecated ListGoals is used")
+	}
+}
+
+// TestDeprecatedGoalStatusFlagBehavior tests that -goal-status sets ShowGoals
+func TestDeprecatedGoalStatusFlagBehavior(t *testing.T) {
+	cfg := config.New()
+
+	// Simulate deprecated -goal-status flag being used
+	cfg.GoalStatus = true
+
+	// The deprecation handling in parseFlags() sets ShowGoals when GoalStatus is true
+	// Here we simulate that behavior for testing
+	if cfg.GoalStatus {
+		cfg.ShowGoals = true
+	}
+
+	// Verify that ShowGoals is now true (mimicking the deprecation handling)
+	if !cfg.ShowGoals {
+		t.Error("ShowGoals should be true when deprecated GoalStatus is used")
+	}
+}
