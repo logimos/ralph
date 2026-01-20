@@ -60,12 +60,12 @@ func getFlagGroups() []flagGroup {
 		},
 		{
 			name:        "Recovery (Per-Feature)",
-			description: "Handle failures during feature implementation",
+			description: "Handle failures during a single feature's implementation. Recovery is the FIRST line of defense - it retries, skips, or rolls back individual features before escalating to replanning.",
 			flags:       []string{"max-retries", "recovery-strategy"},
 		},
 		{
 			name:        "Replanning (Plan-Level)",
-			description: "Dynamically adjust the overall plan when issues occur",
+			description: "Dynamically adjust the ENTIRE plan when recovery alone isn't enough. Replanning is the SECOND line of defense - triggered after repeated failures across features.",
 			flags:       []string{"auto-replan", "replan", "replan-strategy", "replan-threshold", "list-versions", "restore-version"},
 		},
 		{
@@ -479,6 +479,32 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    verbose: true\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Priority: CLI flags > config file > defaults\n")
+		fmt.Fprintf(os.Stderr, "\nTwo-Tier Failure Handling:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph uses a two-tier system to handle failures gracefully:\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  TIER 1: Recovery (Per-Feature) - First line of defense\n")
+		fmt.Fprintf(os.Stderr, "    Handles failures within a SINGLE feature's implementation.\n")
+		fmt.Fprintf(os.Stderr, "    Flags: -max-retries, -recovery-strategy\n")
+		fmt.Fprintf(os.Stderr, "    Actions: retry with enhanced prompt, skip, or rollback\n")
+		fmt.Fprintf(os.Stderr, "    Triggers: test failure, typecheck error, agent error, timeout\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  TIER 2: Replanning (Plan-Level) - Second line of defense\n")
+		fmt.Fprintf(os.Stderr, "    Restructures the ENTIRE plan when recovery alone isn't enough.\n")
+		fmt.Fprintf(os.Stderr, "    Flags: -auto-replan, -replan-threshold, -replan-strategy\n")
+		fmt.Fprintf(os.Stderr, "    Actions: adjust remaining features, AI-assisted restructuring\n")
+		fmt.Fprintf(os.Stderr, "    Triggers: repeated failures reaching threshold, blocked features\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Escalation flow:\n")
+		fmt.Fprintf(os.Stderr, "    Feature fails → Recovery (retry/skip/rollback) → Still failing?\n")
+		fmt.Fprintf(os.Stderr, "    → Consecutive failures >= -replan-threshold → Replanning triggers\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Example: For a stubborn feature, Ralph will:\n")
+		fmt.Fprintf(os.Stderr, "    1. Try to implement it (iteration 1)\n")
+		fmt.Fprintf(os.Stderr, "    2. Fail → Recovery retries with enhanced guidance (iteration 2)\n")
+		fmt.Fprintf(os.Stderr, "    3. Fail again → Recovery retries (iteration 3)\n")
+		fmt.Fprintf(os.Stderr, "    4. -max-retries exceeded → Recovery skips to next feature\n")
+		fmt.Fprintf(os.Stderr, "    5. Next feature also fails repeatedly...\n")
+		fmt.Fprintf(os.Stderr, "    6. -replan-threshold reached → Replanning restructures the plan\n")
 		fmt.Fprintf(os.Stderr, "\nRecovery Strategies:\n")
 		fmt.Fprintf(os.Stderr, "  retry    - Retry the feature with enhanced guidance (default)\n")
 		fmt.Fprintf(os.Stderr, "  skip     - Skip the feature and move to the next one\n")

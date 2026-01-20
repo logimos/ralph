@@ -1510,3 +1510,57 @@ ralph -refine-plan
 - The preview file `plan.refined.json` is automatically cleaned up when `-refine-plan` is run
 - The `-dry-run` flag only affects `-refine-plan`, not `-analyze-plan` (which is already read-only)
 - Consider adding `-dry-run` support to other modifying commands in future iterations
+
+[2026-01-20T10:25:14Z] FAILURE [agent_error]: Command exited with code 1 (feature #21, retry 1)
+
+## 2026-01-20: Improve Documentation for Failure-Handling Flag Pairs (Feature #22)
+
+### Completed
+- Added comprehensive "Two-Tier Failure Handling" section to flag.Usage in ralph.go:
+  - Explains TIER 1 (Recovery - per-feature) and TIER 2 (Replanning - plan-level)
+  - Shows escalation flow from recovery to replanning
+  - Provides concrete example of how failures are handled step by step
+- Updated flag group descriptions in `getFlagGroups()`:
+  - "Recovery (Per-Feature)" now explains it's the FIRST line of defense
+  - "Replanning (Plan-Level)" now explains it's the SECOND line of defense
+- Updated `docs/FEATURES.md` with:
+  - New "Two-Tier Failure Handling" section with ASCII escalation diagram
+  - "When to Use Recovery vs Replanning" decision table
+  - Configuration summary showing flags and defaults for each tier
+  - Renamed "Failure Recovery" to "Failure Recovery (Tier 1)"
+  - Renamed "Adaptive Replanning" to "Adaptive Replanning (Tier 2)"
+  - Added example showing recovery vs replanning in action
+  - Updated Table of Contents with new sections
+- Updated `docs/TROUBLESHOOTING.md` with:
+  - New "Understanding Recovery vs Replanning" overview
+  - "When to Use Recovery" section with 3 scenarios
+  - "When to Use Replanning" section with 3 scenarios
+  - "Replanning not triggering" troubleshooting
+  - "Replanning creates unwanted changes" troubleshooting
+- All tests pass, build successful
+
+### Documentation Structure
+```
+Failure Handling Documentation:
+├── flag.Usage (ralph.go)
+│   └── "Two-Tier Failure Handling" section with escalation flow
+├── docs/FEATURES.md
+│   ├── Two-Tier Failure Handling (overview + diagram)
+│   ├── Failure Recovery (Tier 1) (detailed reference)
+│   └── Adaptive Replanning (Tier 2) (detailed reference)
+└── docs/TROUBLESHOOTING.md
+    ├── Understanding Recovery vs Replanning
+    ├── When to Use Recovery (scenarios)
+    └── When to Use Replanning (scenarios)
+```
+
+### Key Concepts Documented
+- **Tier 1 (Recovery)**: Per-feature, flags: -max-retries, -recovery-strategy
+- **Tier 2 (Replanning)**: Plan-level, flags: -auto-replan, -replan-threshold, -replan-strategy
+- **Escalation**: Recovery exhausted → failure counter increments → threshold reached → replanning triggers
+
+### Notes for Next Developer
+- The two-tier system documentation is now consistent across all three locations
+- Consider adding `-help-recovery` and `-help-replan` flags in the future for detailed subsystem help
+- The ASCII diagram in FEATURES.md provides visual reference for the escalation flow
+- All 23 features in plan.json are now marked as `tested: true` - PRD is COMPLETE!

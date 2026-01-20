@@ -8,16 +8,17 @@ This document provides detailed documentation for all Ralph features.
 2. [Build System Support](#build-system-support)
 3. [Configuration Files](#configuration-files)
 4. [Environment Detection](#environment-detection)
-5. [Failure Recovery](#failure-recovery)
-6. [Smart Scope Control](#smart-scope-control)
-7. [Adaptive Replanning](#adaptive-replanning)
-8. [Long-Running Memory](#long-running-memory)
-9. [User Nudge Hooks](#user-nudge-hooks)
-10. [Milestone Tracking](#milestone-tracking)
-11. [Goal-Oriented Planning](#goal-oriented-planning)
-12. [Outcome Validation](#outcome-validation)
-13. [Multi-Agent Collaboration](#multi-agent-collaboration)
-14. [Enhanced CLI Output](#enhanced-cli-output)
+5. [Two-Tier Failure Handling](#two-tier-failure-handling) ← **Understanding Recovery vs Replanning**
+6. [Failure Recovery (Tier 1)](#failure-recovery-tier-1)
+7. [Smart Scope Control](#smart-scope-control)
+8. [Adaptive Replanning (Tier 2)](#adaptive-replanning-tier-2)
+9. [Long-Running Memory](#long-running-memory)
+10. [User Nudge Hooks](#user-nudge-hooks)
+11. [Milestone Tracking](#milestone-tracking)
+12. [Goal-Oriented Planning](#goal-oriented-planning)
+13. [Outcome Validation](#outcome-validation)
+14. [Multi-Agent Collaboration](#multi-agent-collaboration)
+15. [Enhanced CLI Output](#enhanced-cli-output)
 
 ---
 
@@ -166,9 +167,99 @@ ralph -iterations 5 -environment github-actions
 
 ---
 
-## Failure Recovery
+## Two-Tier Failure Handling
 
-Intelligent handling of failures during iteration.
+Ralph uses a sophisticated two-tier system to handle failures gracefully, minimizing stuck states and maximizing progress.
+
+### Escalation Diagram
+
+```
+                    ┌───────────────────────┐
+                    │  Feature Fails        │
+                    └───────────┬───────────┘
+                                │
+    ════════════════════════════╪════════════════════════════
+    TIER 1: RECOVERY            │ (Per-Feature)
+    Flags: -max-retries, -recovery-strategy
+    ════════════════════════════╪════════════════════════════
+                                ▼
+                    ┌───────────────────────┐
+                    │  Detect Failure Type  │
+                    │  (test/typecheck/etc) │
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │  Apply Recovery       │
+                    │  Strategy             │
+                    └───────────┬───────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+    ┌───────┐             ┌───────────┐           ┌───────┐
+    │ RETRY │             │ ROLLBACK  │           │ SKIP  │
+    │(prompt│             │(git reset)│           │(next) │
+    └───┬───┘             └─────┬─────┘           └───┬───┘
+        │                       │                     │
+        └───────────────────────┼─────────────────────┘
+                                │
+                    retries < -max-retries?
+                        │           │
+                       YES          NO
+                        │           │
+                    Try again   Skip feature, increment failure counter
+                                    │
+    ════════════════════════════════╪════════════════════════════
+    TIER 2: REPLANNING              │ (Plan-Level)
+    Flags: -auto-replan, -replan-threshold, -replan-strategy
+    ════════════════════════════════╪════════════════════════════
+                                    │
+                    consecutive failures >= -replan-threshold?
+                        │           │
+                       NO          YES
+                        │           │
+                    Continue    ┌───▼───────────────┐
+                    execution   │  Trigger Replan   │
+                                │  Strategy         │
+                                └─────────┬─────────┘
+                                          │
+            ┌─────────────────────────────┼─────────────────────────────┐
+            ▼                             ▼                             ▼
+    ┌───────────────┐           ┌─────────────────┐           ┌─────────────┐
+    │ INCREMENTAL   │           │     AGENT       │           │    NONE     │
+    │ (adjust plan) │           │ (AI restructure)│           │ (disabled)  │
+    └───────────────┘           └─────────────────┘           └─────────────┘
+            │                             │
+            └─────────────────────────────┘
+                          │
+                    Create backup (plan.json.bak.N)
+                    Apply restructured plan
+                    Reset failure counters
+                    Resume with new plan
+```
+
+### When to Use Recovery vs Replanning
+
+| Situation | Use Recovery | Use Replanning |
+|-----------|--------------|----------------|
+| Single feature failing | ✓ `-recovery-strategy retry` | |
+| Transient errors | ✓ `-max-retries 5` | |
+| Multiple features failing in sequence | | ✓ `-auto-replan` |
+| Plan structure is wrong | | ✓ `-replan` |
+| Need to backtrack significantly | | ✓ `-replan-strategy agent` |
+| Feature is fundamentally blocked | ✓ `-recovery-strategy skip` | ✓ if many blocked |
+
+### Configuration Summary
+
+| Tier | Flags | Default Values |
+|------|-------|----------------|
+| Recovery | `-max-retries`, `-recovery-strategy` | 3 retries, retry strategy |
+| Replanning | `-auto-replan`, `-replan-threshold`, `-replan-strategy` | disabled, 3 failures, incremental |
+
+---
+
+## Failure Recovery (Tier 1)
+
+Intelligent handling of failures during a single feature's implementation. This is the **first line of defense**.
 
 ### Failure Types
 
@@ -190,7 +281,14 @@ Intelligent handling of failures during iteration.
 ### Configuration
 
 ```bash
+# Set max retries before escalating to skip (default: 3)
 ralph -iterations 10 -max-retries 5 -recovery-strategy retry
+
+# Skip problematic features immediately
+ralph -iterations 10 -recovery-strategy skip
+
+# Use git to reset and retry fresh
+ralph -iterations 10 -recovery-strategy rollback
 ```
 
 ---
@@ -227,45 +325,78 @@ ralph -list-deferred
 
 ---
 
-## Adaptive Replanning
+## Adaptive Replanning (Tier 2)
 
-Dynamic plan adjustment when issues occur.
+Dynamic plan adjustment when issues occur repeatedly. This is the **second line of defense** that kicks in when Recovery (Tier 1) alone isn't enough. See [Two-Tier Failure Handling](#two-tier-failure-handling) for the full escalation flow.
 
 ### Triggers
 
-| Trigger | Condition |
-|---------|-----------|
-| `test_failure` | Consecutive failures >= threshold |
-| `requirement_change` | plan.json modified externally |
-| `blocked_feature` | Features become blocked |
-| `manual` | User runs `-replan` |
+| Trigger | Condition | Description |
+|---------|-----------|-------------|
+| `test_failure` | Consecutive failures >= `-replan-threshold` | Recovery couldn't fix repeated failures |
+| `requirement_change` | plan.json modified externally | User edited the plan manually |
+| `blocked_feature` | Features become blocked | Multiple features deferred by scope control |
+| `manual` | User runs `-replan` | Explicit user request |
 
 ### Strategies
 
-| Strategy | Description |
-|----------|-------------|
-| `incremental` | Adjust based on current state |
-| `agent` | AI agent restructures plan |
-| `none` | Disable replanning |
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `incremental` | Adjust based on current state | Minor plan adjustments |
+| `agent` | AI agent restructures plan | Major restructuring needed |
+| `none` | Disable replanning | When manual control preferred |
 
 ### Plan Versioning
 
-- Backups created before replanning
+- Backups created before replanning (`plan.json.bak.N`)
 - Listed with `-list-versions`
 - Restored with `-restore-version N`
+- Hash-based deduplication (identical content = one backup)
 
 ### Usage
 
 ```bash
-# Enable auto-replanning
-ralph -iterations 10 -auto-replan
+# Enable auto-replanning when consecutive failures reach threshold
+ralph -iterations 10 -auto-replan -replan-threshold 3
 
-# Manual replan
+# Use AI to restructure the plan
+ralph -iterations 10 -auto-replan -replan-strategy agent
+
+# Manual replan (useful when you know the plan structure is wrong)
 ralph -replan
 
 # Manage versions
 ralph -list-versions
 ralph -restore-version 2
+```
+
+### Example: Recovery vs Replanning in Action
+
+```
+Iteration 1: Feature A fails (test error)
+  → Recovery: Retry with enhanced guidance
+
+Iteration 2: Feature A fails again
+  → Recovery: Retry (2/3 retries used)
+
+Iteration 3: Feature A fails again
+  → Recovery: Max retries exceeded, skip to Feature B
+  → Failure counter: 1
+
+Iteration 4: Feature B fails
+  → Recovery: Retry with enhanced guidance
+
+Iteration 5: Feature B fails
+  → Recovery: Skip to Feature C
+  → Failure counter: 2
+
+Iteration 6: Feature C fails
+  → Recovery: Skip
+  → Failure counter: 3 (equals -replan-threshold)
+  → REPLANNING TRIGGERED: Plan restructured
+  → Failure counter reset to 0
+
+Iteration 7: Continue with restructured plan...
 ```
 
 ---

@@ -271,6 +271,68 @@ ralph -progress /tmp/progress.txt -iterations 5
 
 ## Recovery Issues
 
+### Understanding Recovery vs Replanning
+
+Ralph uses a two-tier failure handling system. Understanding when to use each is key to effective error recovery:
+
+**Tier 1: Recovery (Per-Feature)**
+- Handles failures within a single feature
+- Flags: `-max-retries`, `-recovery-strategy`
+- Actions: retry, skip, rollback
+- Use when: Individual features are failing
+
+**Tier 2: Replanning (Plan-Level)**  
+- Restructures the entire plan when recovery isn't enough
+- Flags: `-auto-replan`, `-replan-threshold`, `-replan-strategy`
+- Actions: adjust plan, AI restructure
+- Use when: Multiple features failing repeatedly
+
+See [Two-Tier Failure Handling](FEATURES.md#two-tier-failure-handling) for the complete escalation flow.
+
+### When to Use Recovery
+
+**Scenario 1: Test is flaky (passes sometimes)**
+```bash
+# Use retry with more attempts
+ralph -iterations 10 -max-retries 5 -recovery-strategy retry
+```
+
+**Scenario 2: One feature is broken but others are fine**
+```bash
+# Skip the problematic feature and continue
+ralph -iterations 10 -recovery-strategy skip
+```
+
+**Scenario 3: Changes corrupted the codebase**
+```bash
+# Rollback via git and retry fresh
+ralph -iterations 10 -recovery-strategy rollback
+```
+
+### When to Use Replanning
+
+**Scenario 1: Multiple features failing in sequence**
+```bash
+# Enable auto-replanning after 3 consecutive failures
+ralph -iterations 10 -auto-replan -replan-threshold 3
+```
+
+**Scenario 2: Plan structure is fundamentally wrong**
+```bash
+# Manually trigger replanning
+ralph -replan
+
+# Or use AI to restructure the entire plan
+ralph -replan -replan-strategy agent
+```
+
+**Scenario 3: Requirements changed mid-project**
+```bash
+# Replanning will detect plan.json was modified externally
+# and offer to restructure based on new requirements
+ralph -iterations 10 -auto-replan
+```
+
 ### Recovery not triggering
 
 **Cause:** Failure not detected or recovery disabled.
@@ -318,11 +380,44 @@ ralph -recovery-strategy skip -iterations 5
 
 **Solution:**
 ```bash
-# Increase retries
+# Increase retries for flaky tests
 ralph -max-retries 5 -iterations 10
 
-# Or enable replanning
+# Or enable replanning for systematic issues
 ralph -auto-replan -iterations 10
+```
+
+### Replanning not triggering
+
+**Cause:** Auto-replan disabled or threshold not reached.
+
+**Solution:**
+```bash
+# Enable auto-replanning
+ralph -auto-replan -iterations 10
+
+# Lower threshold if needed (default is 3)
+ralph -auto-replan -replan-threshold 2 -iterations 10
+
+# Or manually trigger
+ralph -replan
+```
+
+### Replanning creates unwanted changes
+
+**Cause:** Agent-based replanning is too aggressive.
+
+**Solution:**
+```bash
+# Use incremental strategy instead of agent
+ralph -auto-replan -replan-strategy incremental -iterations 10
+
+# Or restore a previous plan version
+ralph -list-versions
+ralph -restore-version 2
+
+# Or disable replanning entirely
+ralph -replan-strategy none -iterations 10
 ```
 
 ---

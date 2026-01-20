@@ -416,7 +416,7 @@
             "Add examples in docs/TROUBLESHOOTING.md showing when to use each system"
         ],
         "expected_output": "Users clearly understand the difference between per-feature recovery and plan-level replanning",
-        "tested": false
+        "tested": true
     },
     {
         "id": 23,
