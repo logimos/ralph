@@ -1703,3 +1703,111 @@ Issues found: 0
 - The analysis now gives accurate feedback about what refinement would actually change
 - This fix makes the `-analyze-plan` → `-refine-plan` workflow more predictable
 - All 290+ tests pass after this change
+
+## 2026-01-20: Project Baselining - Codebase Familiarization (Feature #25)
+
+### Completed
+- Created `internal/baseline` package with comprehensive codebase analysis:
+  - `baseline.go` - Scanner, file type detection, structure analysis, baseline operations
+  - `baseline_test.go` - 25+ tests covering all functionality
+- Implemented codebase scanner:
+  - Walks directory tree while respecting ignore patterns (.git, node_modules, vendor, etc.)
+  - Catalogs files by type: source, test, config, docs, asset, other
+  - Detects programming language from file extensions
+  - Counts lines for source files (skipping large files > 1MB)
+- Implemented file type detection:
+  - Source files: .go, .py, .js, .ts, .tsx, .java, .rs, etc.
+  - Test files: *_test.go, *.test.js, *.spec.tsx, files in test/ directories
+  - Config files: package.json, go.mod, Cargo.toml, *.yaml, Makefile, etc.
+  - Documentation: README.md, CHANGELOG.md, docs/, etc.
+  - Assets: images, fonts, videos, archives
+- Implemented tech stack detection:
+  - Languages (sorted by file count)
+  - Build tools (Go Modules, npm, Cargo, Maven, Gradle, Make, Docker)
+  - Test frameworks (Go testing, Jest, pytest, Mocha, Karma)
+- Implemented structure analysis:
+  - Package/module detection from manifest files
+  - Entry point detection (main.go, index.js, app.py, etc.)
+  - Test directory identification
+  - Configuration file cataloging
+- Implemented convention detection:
+  - Standard Go project layout (cmd/, internal/, pkg/)
+  - src/ directory convention
+  - Test naming patterns (_test.go, .test.js, .spec.ts)
+- Implemented pattern detection:
+  - MVC (Model-View-Controller) architecture
+  - Clean/Domain-driven architecture
+  - Repository pattern
+  - API/Handler-based structure
+  - Component-based architecture (frontend)
+- Added CLI flags:
+  - `-baseline` - Analyze codebase and generate baseline.json
+  - `-show-baseline` - Display current baseline summary
+  - `-baseline-file <path>` - Custom baseline file path
+  - `-use-baseline` - Enable/disable baseline context in prompts (default: true)
+- Added baseline context injection into agent prompts:
+  - Tech stack information (languages, build tools, test framework)
+  - Project structure overview (file counts, entry points, test dirs)
+  - Conventions to follow
+  - Patterns in use
+  - Key directories listing
+- Updated Config struct with baseline-related fields
+- Updated flag.Usage with Codebase Baselining documentation
+- All 290+ tests passing (25+ baseline tests + existing tests)
+
+### Package Structure
+```
+internal/baseline/
+├── baseline.go      # Scanner, FileType, Baseline struct, detection logic
+└── baseline_test.go # 25+ tests for scanning, detection, and serialization
+```
+
+### Baseline File Format
+```json
+{
+  "version": "1.0",
+  "generated_at": "2026-01-20T10:30:00Z",
+  "root_path": "/path/to/project",
+  "tech_stack": {
+    "languages": ["Go", "JavaScript"],
+    "build_tools": ["Go Modules", "npm"],
+    "test_framework": "Go testing"
+  },
+  "structure": {
+    "directories": ["cmd", "internal", "pkg"],
+    "packages": [...],
+    "entry_points": ["cmd/main.go"],
+    "test_dirs": ["internal/pkg_test"]
+  },
+  "file_counts": {"source": 50, "test": 20, "config": 5},
+  "total_files": 75,
+  "total_lines": 5000,
+  "conventions": ["Standard Go project layout"],
+  "patterns": ["Repository pattern"]
+}
+```
+
+### Usage Examples
+```bash
+# Analyze codebase and create baseline
+ralph -baseline
+
+# View baseline summary
+ralph -show-baseline
+
+# Run iterations with baseline context (automatic when baseline.json exists)
+ralph -iterations 5
+
+# Run iterations without baseline context
+ralph -iterations 5 -use-baseline=false
+```
+
+### Notes for Next Developer
+- The baseline is automatically loaded and injected into prompts when baseline.json exists
+- File scanning respects common ignore patterns (.git, node_modules, vendor, __pycache__, etc.)
+- Convention and pattern detection is keyword-based on directory names
+- The BuildPromptContext() method creates formatted context for AI agents
+- Consider adding more granular language detection (e.g., framework versions from package.json)
+- Consider adding dependency graph building in Feature #26
+- Consider adding code complexity metrics in future iterations
+- The baseline package is independent and follows the established package-per-concern pattern

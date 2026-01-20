@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/logimos/ralph/internal/agent"
+	"github.com/logimos/ralph/internal/baseline"
 	"github.com/logimos/ralph/internal/config"
 	"github.com/logimos/ralph/internal/detection"
 	"github.com/logimos/ralph/internal/environment"
@@ -117,6 +118,11 @@ func getFlagGroups() []flagGroup {
 			name:        "Plan Generation",
 			description: "Generate plans from notes files",
 			flags:       []string{"generate-plan", "notes", "output"},
+		},
+		{
+			name:        "Codebase Baselining",
+			description: "Analyze and familiarize Ralph with your codebase",
+			flags:       []string{"baseline", "baseline-file", "show-baseline", "use-baseline"},
 		},
 	}
 }
@@ -350,6 +356,15 @@ func main() {
 		return
 	}
 
+	// Handle baseline commands
+	if cfg.Baseline || cfg.ShowBaseline {
+		if err := handleBaselineCommands(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -440,6 +455,11 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.AnalyzePlan, "analyze-plan", false, "Analyze plan and preview refinements (read-only, writes to plan.refined.json for review)")
 	flag.BoolVar(&cfg.RefinePlan, "refine-plan", false, "Apply plan refinements by splitting complex features (writes to plan.json)")
 	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Show what changes would be made without writing (use with -refine-plan)")
+	// Baseline flags
+	flag.BoolVar(&cfg.Baseline, "baseline", false, "Analyze the codebase and generate baseline.json for context-aware development")
+	flag.StringVar(&cfg.BaselineFile, "baseline-file", config.DefaultBaselineFile, "Path to baseline file")
+	flag.BoolVar(&cfg.ShowBaseline, "show-baseline", false, "Display the current baseline summary")
+	flag.BoolVar(&cfg.UseBaseline, "use-baseline", true, "Use baseline context in agent prompts (default: true when baseline.json exists)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -671,6 +691,23 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    -analyze-plan          Analyze plan, show suggestions, write preview file\n")
 		fmt.Fprintf(os.Stderr, "    -refine-plan           Apply refinements (modifies plan.json)\n")
 		fmt.Fprintf(os.Stderr, "    -refine-plan -dry-run  Preview what -refine-plan would do (no changes)\n")
+		fmt.Fprintf(os.Stderr, "\nCodebase Baselining:\n")
+		fmt.Fprintf(os.Stderr, "  Ralph can analyze your codebase to understand its structure and patterns.\n")
+		fmt.Fprintf(os.Stderr, "  The baseline provides context-aware guidance to AI agents.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Baseline analysis detects:\n")
+		fmt.Fprintf(os.Stderr, "    - Tech stack (languages, frameworks, build tools, test frameworks)\n")
+		fmt.Fprintf(os.Stderr, "    - Project structure (packages, entry points, test directories)\n")
+		fmt.Fprintf(os.Stderr, "    - Conventions (naming patterns, file organization)\n")
+		fmt.Fprintf(os.Stderr, "    - Patterns (MVC, Clean Architecture, Repository, etc.)\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Commands:\n")
+		fmt.Fprintf(os.Stderr, "    -baseline              Scan codebase and create baseline.json\n")
+		fmt.Fprintf(os.Stderr, "    -show-baseline         Display current baseline summary\n")
+		fmt.Fprintf(os.Stderr, "    -baseline-file <path>  Use custom baseline file (default: baseline.json)\n")
+		fmt.Fprintf(os.Stderr, "    -use-baseline=false    Disable baseline context in prompts\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  The baseline is automatically used in iterations when baseline.json exists.\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -706,6 +743,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -analyze-plan                    # Analyze plan and write preview to plan.refined.json\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -refine-plan -dry-run            # Preview what refinements would be applied\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -refine-plan                     # Apply refinements to plan.json\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -baseline                        # Analyze codebase and create baseline.json\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -show-baseline                   # Display baseline summary\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -use-baseline=false # Run without baseline context\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -992,6 +1032,18 @@ func runIterations(cfg *config.Config) error {
 		output.Debug("No nudge file loaded: %v", err)
 	}
 
+	// Load baseline if it exists and use-baseline is enabled
+	var baselineData *baseline.Baseline
+	if cfg.UseBaseline {
+		if data, err := baseline.Load(cfg.BaselineFile); err == nil {
+			baselineData = data
+			if cfg.Verbose {
+				output.Debug("Loaded baseline from %s (%d files, %d lines)",
+					cfg.BaselineFile, baselineData.TotalFiles, baselineData.TotalLines)
+			}
+		}
+	}
+
 	output.Header("Ralph - Iterative Development Workflow")
 	output.Info("Plan file: %s", cfg.PlanFile)
 	output.Info("Progress file: %s", cfg.ProgressFile)
@@ -1003,6 +1055,9 @@ func runIterations(cfg *config.Config) error {
 	}
 	if nudgeStore.ActiveCount() > 0 {
 		output.Info("Nudges: %d active nudge(s) from %s", nudgeStore.ActiveCount(), cfg.NudgeFile)
+	}
+	if baselineData != nil {
+		output.Info("Baseline: %d files analyzed (%s)", baselineData.TotalFiles, strings.Join(baselineData.TechStack.Languages, ", "))
 	}
 	
 	// Load plans and create milestone manager
@@ -1164,6 +1219,14 @@ func runIterations(cfg *config.Config) error {
 
 		// Build the prompt for the AI agent, including any recovery guidance
 		iterPrompt := prompt.BuildIterationPrompt(cfg)
+
+		// Inject baseline context (codebase structure and conventions)
+		if baselineData != nil {
+			baselineContext := baselineData.BuildPromptContext()
+			if baselineContext != "" {
+				iterPrompt = baselineContext + iterPrompt
+			}
+		}
 		
 		// Inject memory context (relevant memories based on current feature category)
 		// Note: category could be extracted from the plan in a future enhancement
@@ -2643,6 +2706,71 @@ func handleListAgents(cfg *config.Config) error {
 	for _, role := range multiagent.ValidRoles {
 		count := roleCounts[role]
 		fmt.Printf("  %s: %d agent(s)\n", role, count)
+	}
+
+	return nil
+}
+
+// handleBaselineCommands processes baseline-related CLI commands
+func handleBaselineCommands(cfg *config.Config) error {
+	// Handle show-baseline command
+	if cfg.ShowBaseline {
+		baselineData, err := baseline.Load(cfg.BaselineFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Println("No baseline found.")
+				fmt.Println()
+				fmt.Println("To create a baseline, run:")
+				fmt.Printf("  %s -baseline\n", os.Args[0])
+				fmt.Println()
+				fmt.Println("This will analyze your codebase and create baseline.json with:")
+				fmt.Println("  - Tech stack detection (languages, frameworks, build tools)")
+				fmt.Println("  - Project structure analysis (packages, entry points, test dirs)")
+				fmt.Println("  - Convention detection (naming patterns, code organization)")
+				fmt.Println("  - Pattern detection (MVC, Clean Architecture, etc.)")
+				return nil
+			}
+			return fmt.Errorf("failed to load baseline: %w", err)
+		}
+
+		fmt.Print(baselineData.Summary())
+		return nil
+	}
+
+	// Handle baseline command (scan and create baseline)
+	if cfg.Baseline {
+		fmt.Println("=== Codebase Baselining ===")
+		fmt.Println()
+		fmt.Println("Scanning codebase...")
+
+		// Create scanner for current directory
+		scanner := baseline.NewScanner(".")
+
+		// Perform the scan
+		baselineData, err := scanner.Scan()
+		if err != nil {
+			return fmt.Errorf("failed to scan codebase: %w", err)
+		}
+
+		// Save the baseline
+		if err := baselineData.Save(cfg.BaselineFile); err != nil {
+			return fmt.Errorf("failed to save baseline: %w", err)
+		}
+
+		fmt.Printf("\nBaseline created: %s\n\n", cfg.BaselineFile)
+		fmt.Print(baselineData.Summary())
+
+		fmt.Println()
+		fmt.Println("The baseline will be automatically used in future iterations")
+		fmt.Println("to provide context-aware guidance to the AI agent.")
+		fmt.Println()
+		fmt.Println("To view the baseline later:")
+		fmt.Printf("  %s -show-baseline\n", os.Args[0])
+		fmt.Println()
+		fmt.Println("To disable baseline context in prompts:")
+		fmt.Printf("  %s -iterations 5 -use-baseline=false\n", os.Args[0])
+
+		return nil
 	}
 
 	return nil

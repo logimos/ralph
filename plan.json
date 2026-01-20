@@ -460,7 +460,7 @@
             "Implement baseline knowledge injection into agent prompts for context-aware feature development"
         ],
         "expected_output": "Ralph can analyze and familiarize itself with existing codebases, storing knowledge in baseline.json for use in subsequent feature development",
-        "tested": false
+        "tested": true
     },
     {
         "id": 26,

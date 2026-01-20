@@ -34,6 +34,8 @@ const (
 	DefaultAgentsFile = "agents.json"
 	// DefaultParallelAgents is the default max number of parallel agents
 	DefaultParallelAgents = 2
+	// DefaultBaselineFile is the default path for the baseline file
+	DefaultBaselineFile = "baseline.json"
 )
 
 // Config holds the application configuration
@@ -109,6 +111,11 @@ type Config struct {
 	AnalyzePlan bool // Analyze plan for refinement suggestions (read-only, writes preview to plan.refined.json)
 	RefinePlan  bool // Apply plan refinement by splitting complex features (writes to plan.json)
 	DryRun      bool // Show what changes would be made without writing (for -refine-plan)
+	// Baseline configuration
+	Baseline         bool   // Run baseline analysis of the codebase
+	BaselineFile     string // Path to baseline file (default: baseline.json)
+	ShowBaseline     bool   // Display current baseline summary
+	UseBaseline      bool   // Use baseline context in prompts (default: true when baseline.json exists)
 }
 
 // New creates a new Config with default values
@@ -131,5 +138,7 @@ func New() *Config {
 		GoalsFile:        DefaultGoalsFile,
 		AgentsFile:       DefaultAgentsFile,
 		ParallelAgents:   DefaultParallelAgents,
+		BaselineFile:     DefaultBaselineFile,
+		UseBaseline:      true, // Auto-use baseline if file exists
 	}
 }
