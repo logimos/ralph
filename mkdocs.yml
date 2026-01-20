@@ -1,0 +1,119 @@
+# MkDocs configuration for Ralph documentation
+# Deploy to GitHub Pages with: mkdocs gh-deploy
+
+site_name: Ralph
+site_description: AI-Assisted Development Workflow CLI
+site_url: https://start-it.github.io/ralph
+repo_url: https://github.com/start-it/ralph
+repo_name: start-it/ralph
+
+# Theme configuration
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Configuration: getting-started/configuration.md
+  - Features:
+    - Overview: features/index.md
+    - Plan Management: features/plan-management.md
+    - Failure Recovery: features/failure-recovery.md
+    - Smart Scope Control: features/scope-control.md
+    - Adaptive Replanning: features/replanning.md
+    - Memory System: features/memory.md
+    - Nudge System: features/nudges.md
+    - Milestones: features/milestones.md
+    - Goals: features/goals.md
+    - Validation: features/validation.md
+    - Multi-Agent: features/multi-agent.md
+    - CLI Output: features/cli-output.md
+  - Workflows:
+    - Basic Workflow: workflows/basic.md
+    - CI/CD Integration: workflows/ci-cd.md
+    - Team Collaboration: workflows/team.md
+  - Reference:
+    - CLI Options: reference/cli.md
+    - Configuration: reference/configuration.md
+    - Plan Format: reference/plan-format.md
+    - Architecture: reference/architecture.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Contributing: contributing.md
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - codehilite:
+      guess_lang: false
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+  - tables
+  - attr_list
+  - md_in_html
+  - def_list
+
+# Plugins
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/start-it/ralph
+  version:
+    provider: mike

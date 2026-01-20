@@ -1564,3 +1564,83 @@ Failure Handling Documentation:
 - Consider adding `-help-recovery` and `-help-replan` flags in the future for detailed subsystem help
 - The ASCII diagram in FEATURES.md provides visual reference for the escalation flow
 - All 23 features in plan.json are now marked as `tested: true` - PRD is COMPLETE!
+
+## 2026-01-20: Documentation Website with MkDocs (Feature #24)
+
+### Completed
+- Selected MkDocs with Material theme for documentation
+- Created comprehensive `mkdocs.yml` configuration with:
+  - Material theme with light/dark mode toggle
+  - Navigation with tabs, sections, and expand
+  - Code highlighting with copy support
+  - Search functionality
+  - Mermaid diagram support
+  - Social links to GitHub
+- Created full documentation site structure in `docs/`:
+  - **Home**: Overview page with feature cards and quick start
+  - **Getting Started**: Installation, Quick Start, Configuration guides
+  - **Features** (12 pages): Plan Management, Failure Recovery, Scope Control, Replanning, Memory, Nudges, Milestones, Goals, Validation, Multi-Agent, CLI Output
+  - **Workflows** (3 pages): Basic Workflow, CI/CD Integration, Team Collaboration
+  - **Reference** (4 pages): CLI Reference, Configuration Reference, Plan Format, Architecture
+  - **Troubleshooting**: Common issues and solutions
+  - **FAQ**: Frequently asked questions
+  - **Contributing**: Guidelines for contributors
+- Created GitHub Action (`.github/workflows/docs.yml`) for automatic deployment:
+  - Triggers on push to main when docs change
+  - Builds documentation with mkdocs-material
+  - Deploys to GitHub Pages automatically
+  - Manual trigger support via workflow_dispatch
+- All tests passing, build successful
+
+### Documentation Structure
+```
+docs/
+├── index.md                 # Home page
+├── getting-started/
+│   ├── installation.md
+│   ├── quickstart.md
+│   └── configuration.md
+├── features/
+│   ├── index.md             # Features overview
+│   ├── plan-management.md
+│   ├── failure-recovery.md
+│   ├── scope-control.md
+│   ├── replanning.md
+│   ├── memory.md
+│   ├── nudges.md
+│   ├── milestones.md
+│   ├── goals.md
+│   ├── validation.md
+│   ├── multi-agent.md
+│   └── cli-output.md
+├── workflows/
+│   ├── basic.md
+│   ├── ci-cd.md
+│   └── team.md
+├── reference/
+│   ├── cli.md
+│   ├── configuration.md
+│   ├── plan-format.md
+│   └── architecture.md
+├── troubleshooting.md
+├── faq.md
+└── contributing.md
+```
+
+### MkDocs Features Used
+- Material theme with responsive design
+- Tabbed content for code examples
+- Admonitions for notes and warnings
+- Code highlighting with language detection
+- Auto-generated navigation from markdown headers
+- Search with highlighting
+
+### Notes for Next Developer
+- Documentation is deployed to GitHub Pages automatically on push to main
+- To test locally: `pip install mkdocs-material && mkdocs serve`
+- Edit markdown files in `docs/` to update documentation
+- Update `mkdocs.yml` to change navigation structure
+- The site URL is configured for `https://start-it.github.io/ralph`
+- Consider adding API documentation from godoc comments in future
+- Consider adding more workflow examples and tutorials
+- The PRD is now FULLY COMPLETE - all 24 features have been implemented!
