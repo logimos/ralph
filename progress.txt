@@ -1644,3 +1644,62 @@ docs/
 - Consider adding API documentation from godoc comments in future
 - Consider adding more workflow examples and tutorials
 - The PRD is now FULLY COMPLETE - all 24 features have been implemented!
+
+## 2026-01-20: Fix Analyze Plan Consistency (Feature #24)
+
+### Completed
+- Fixed inconsistency between `-analyze-plan` and `-refine-plan` behavior
+- The issue was that `AnalyzePlans` analyzed ALL features including tested ones, but `RefinePlans` only modifies untested features
+- This caused confusion: analysis showed issues in tested features that refinement wouldn't fix
+
+### Changes Made
+- Modified `AnalyzePlans()` to skip tested features (matching `RefinePlans()` behavior)
+- Added `AnalyzeAllPlans()` function for when you need to analyze all features
+- Updated `AnalysisResult` struct with new fields:
+  - `AnalyzedPlans` - count of untested features analyzed
+  - `SkippedPlans` - count of tested features skipped
+- Updated `FormatAnalysisResult()` to show:
+  - Total plans in file
+  - Plans analyzed (untested)
+  - Plans skipped (tested)
+  - Clear messaging when all plans are tested
+- Updated `GetPlanAnalysisSummary()` to reflect new behavior
+- Added 8 new test cases covering:
+  - Skipping tested features in `AnalyzePlans`
+  - `AnalyzeAllPlans` including tested features
+  - All-tested plan scenarios
+  - Format output for various scenarios
+
+### Package Structure
+```
+internal/plan/
+├── plan.go         # Plan struct and file operations
+├── analyze.go      # Updated: AnalyzePlans, AnalyzeAllPlans, formatting
+└── analyze_test.go # Updated: 8 new tests for skip/analyze-all behavior
+```
+
+### Behavior Change Summary
+| Function | Before | After |
+|----------|--------|-------|
+| `AnalyzePlans()` | Analyzed all features | Only analyzes untested features |
+| `AnalyzeAllPlans()` | N/A | New - analyzes all features |
+
+### Example Output (new format)
+```
+=== Plan Analysis Report ===
+
+Total plans in file: 33
+Plans analyzed (untested): 9
+Plans skipped (tested): 24
+Issues found: 0
+
+✓ All untested features appear well-structured and self-contained.
+  No refinement needed - ready for implementation.
+```
+
+### Notes for Next Developer
+- `AnalyzePlans()` now matches `RefinePlans()` behavior - both focus on untested features
+- Use `AnalyzeAllPlans()` if you need to analyze everything (e.g., for auditing)
+- The analysis now gives accurate feedback about what refinement would actually change
+- This fix makes the `-analyze-plan` → `-refine-plan` workflow more predictable
+- All 290+ tests pass after this change

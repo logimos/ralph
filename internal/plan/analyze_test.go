@@ -12,6 +12,9 @@ func TestAnalyzePlans_EmptyPlan(t *testing.T) {
 	if result.TotalPlans != 0 {
 		t.Errorf("expected TotalPlans=0, got %d", result.TotalPlans)
 	}
+	if result.AnalyzedPlans != 0 {
+		t.Errorf("expected AnalyzedPlans=0, got %d", result.AnalyzedPlans)
+	}
 	if result.IssuesFound != 0 {
 		t.Errorf("expected IssuesFound=0, got %d", result.IssuesFound)
 	}
@@ -23,11 +26,13 @@ func TestAnalyzePlans_WellStructuredPlans(t *testing.T) {
 			ID:          1,
 			Description: "Add user authentication",
 			Steps:       []string{"Create auth module", "Add login endpoint", "Add tests"},
+			Tested:      false,
 		},
 		{
 			ID:          2,
 			Description: "Implement caching layer",
 			Steps:       []string{"Add Redis client", "Create cache wrapper", "Add cache tests"},
+			Tested:      false,
 		},
 	}
 
@@ -35,6 +40,9 @@ func TestAnalyzePlans_WellStructuredPlans(t *testing.T) {
 
 	if result.TotalPlans != 2 {
 		t.Errorf("expected TotalPlans=2, got %d", result.TotalPlans)
+	}
+	if result.AnalyzedPlans != 2 {
+		t.Errorf("expected AnalyzedPlans=2, got %d", result.AnalyzedPlans)
 	}
 	if result.IssuesFound != 0 {
 		t.Errorf("expected no issues for well-structured plans, got %d", result.IssuesFound)
@@ -50,11 +58,15 @@ func TestAnalyzePlans_ComplexFeature(t *testing.T) {
 				"Step 1", "Step 2", "Step 3", "Step 4", "Step 5",
 				"Step 6", "Step 7", "Step 8", "Step 9", "Step 10",
 			},
+			Tested: false,
 		},
 	}
 
 	result := AnalyzePlans(plans)
 
+	if result.AnalyzedPlans != 1 {
+		t.Errorf("expected AnalyzedPlans=1, got %d", result.AnalyzedPlans)
+	}
 	if result.ComplexFeatures != 1 {
 		t.Errorf("expected ComplexFeatures=1, got %d", result.ComplexFeatures)
 	}
@@ -250,8 +262,10 @@ func TestGroupStepsByTheme(t *testing.T) {
 
 func TestFormatAnalysisResult_NoIssues(t *testing.T) {
 	result := &AnalysisResult{
-		TotalPlans:  5,
-		IssuesFound: 0,
+		TotalPlans:    5,
+		AnalyzedPlans: 5,
+		SkippedPlans:  0,
+		IssuesFound:   0,
 	}
 
 	formatted := FormatAnalysisResult(result)
@@ -267,6 +281,8 @@ func TestFormatAnalysisResult_NoIssues(t *testing.T) {
 func TestFormatAnalysisResult_WithIssues(t *testing.T) {
 	result := &AnalysisResult{
 		TotalPlans:       3,
+		AnalyzedPlans:    3,
+		SkippedPlans:     0,
 		IssuesFound:      2,
 		CompoundFeatures: 1,
 		ComplexFeatures:  1,
@@ -312,13 +328,14 @@ func TestGetPlanAnalysisSummary(t *testing.T) {
 	}{
 		{
 			name:     "no issues",
-			result:   &AnalysisResult{TotalPlans: 5, IssuesFound: 0},
+			result:   &AnalysisResult{TotalPlans: 5, AnalyzedPlans: 5, IssuesFound: 0},
 			contains: "well-structured",
 		},
 		{
 			name: "with issues",
 			result: &AnalysisResult{
 				TotalPlans:       3,
+				AnalyzedPlans:    3,
 				IssuesFound:      2,
 				CompoundFeatures: 1,
 				ComplexFeatures:  1,
@@ -738,5 +755,191 @@ func TestRefinePlans_MixedPlans(t *testing.T) {
 	// Total refined should be more than original
 	if result.RefinedCount <= result.OriginalCount {
 		t.Errorf("expected RefinedCount > OriginalCount")
+	}
+}
+
+// Tests for AnalyzePlans skipping tested features
+
+func TestAnalyzePlans_SkipsTestedFeatures(t *testing.T) {
+	plans := []Plan{
+		{
+			ID:          1,
+			Description: "Tested complex feature",
+			Steps: []string{
+				"Step 1", "Step 2", "Step 3", "Step 4", "Step 5",
+				"Step 6", "Step 7", "Step 8", "Step 9", "Step 10",
+			},
+			Tested: true, // This should be skipped
+		},
+		{
+			ID:          2,
+			Description: "Untested simple feature",
+			Steps:       []string{"Step 1", "Step 2"},
+			Tested:      false,
+		},
+	}
+
+	result := AnalyzePlans(plans)
+
+	if result.TotalPlans != 2 {
+		t.Errorf("expected TotalPlans=2, got %d", result.TotalPlans)
+	}
+	if result.AnalyzedPlans != 1 {
+		t.Errorf("expected AnalyzedPlans=1 (only untested), got %d", result.AnalyzedPlans)
+	}
+	if result.SkippedPlans != 1 {
+		t.Errorf("expected SkippedPlans=1 (tested feature), got %d", result.SkippedPlans)
+	}
+	// The complex feature was tested, so no issues should be found
+	if result.IssuesFound != 0 {
+		t.Errorf("expected IssuesFound=0 (complex feature was tested), got %d", result.IssuesFound)
+	}
+}
+
+func TestAnalyzePlans_AllTestedPlans(t *testing.T) {
+	plans := []Plan{
+		{
+			ID:          1,
+			Description: "Feature 1",
+			Steps:       []string{"s1", "s2"},
+			Tested:      true,
+		},
+		{
+			ID:          2,
+			Description: "Feature 2",
+			Steps:       []string{"s1", "s2", "s3"},
+			Tested:      true,
+		},
+	}
+
+	result := AnalyzePlans(plans)
+
+	if result.TotalPlans != 2 {
+		t.Errorf("expected TotalPlans=2, got %d", result.TotalPlans)
+	}
+	if result.AnalyzedPlans != 0 {
+		t.Errorf("expected AnalyzedPlans=0 (all tested), got %d", result.AnalyzedPlans)
+	}
+	if result.SkippedPlans != 2 {
+		t.Errorf("expected SkippedPlans=2, got %d", result.SkippedPlans)
+	}
+}
+
+// Tests for AnalyzeAllPlans
+
+func TestAnalyzeAllPlans_IncludesTestedFeatures(t *testing.T) {
+	plans := []Plan{
+		{
+			ID:          1,
+			Description: "Tested complex feature",
+			Steps: []string{
+				"Step 1", "Step 2", "Step 3", "Step 4", "Step 5",
+				"Step 6", "Step 7", "Step 8", "Step 9", "Step 10",
+			},
+			Tested: true,
+		},
+		{
+			ID:          2,
+			Description: "Untested simple feature",
+			Steps:       []string{"Step 1", "Step 2"},
+			Tested:      false,
+		},
+	}
+
+	result := AnalyzeAllPlans(plans)
+
+	if result.TotalPlans != 2 {
+		t.Errorf("expected TotalPlans=2, got %d", result.TotalPlans)
+	}
+	if result.AnalyzedPlans != 2 {
+		t.Errorf("expected AnalyzedPlans=2 (all features), got %d", result.AnalyzedPlans)
+	}
+	if result.SkippedPlans != 0 {
+		t.Errorf("expected SkippedPlans=0, got %d", result.SkippedPlans)
+	}
+	// The complex feature (even though tested) should be found
+	if result.ComplexFeatures != 1 {
+		t.Errorf("expected ComplexFeatures=1, got %d", result.ComplexFeatures)
+	}
+}
+
+func TestAnalyzeAllPlans_FindsAllIssues(t *testing.T) {
+	plans := []Plan{
+		{
+			ID:          1,
+			Description: "Add logging and add monitoring", // Compound
+			Steps:       []string{"s1", "s2"},
+			Tested:      true,
+		},
+		{
+			ID:          2,
+			Description: "Complex untested feature",
+			Steps: []string{
+				"s1", "s2", "s3", "s4", "s5",
+				"s6", "s7", "s8", "s9", "s10", "s11",
+			},
+			Tested: false,
+		},
+	}
+
+	result := AnalyzeAllPlans(plans)
+
+	// Should find issues in both tested and untested features
+	if result.AnalyzedPlans != 2 {
+		t.Errorf("expected AnalyzedPlans=2, got %d", result.AnalyzedPlans)
+	}
+	if result.ComplexFeatures != 1 {
+		t.Errorf("expected ComplexFeatures=1, got %d", result.ComplexFeatures)
+	}
+}
+
+func TestFormatAnalysisResult_AllTested(t *testing.T) {
+	result := &AnalysisResult{
+		TotalPlans:    5,
+		AnalyzedPlans: 0,
+		SkippedPlans:  5,
+		IssuesFound:   0,
+	}
+
+	formatted := FormatAnalysisResult(result)
+
+	if !strings.Contains(formatted, "No untested features") {
+		t.Error("expected message about no untested features")
+	}
+	if !strings.Contains(formatted, "plan is complete") {
+		t.Error("expected 'plan is complete' message")
+	}
+}
+
+func TestFormatAnalysisResult_UntestedNoIssues(t *testing.T) {
+	result := &AnalysisResult{
+		TotalPlans:    5,
+		AnalyzedPlans: 3,
+		SkippedPlans:  2,
+		IssuesFound:   0,
+	}
+
+	formatted := FormatAnalysisResult(result)
+
+	if !strings.Contains(formatted, "well-structured") {
+		t.Error("expected 'well-structured' message")
+	}
+	if !strings.Contains(formatted, "Plans analyzed (untested): 3") {
+		t.Error("expected analyzed count in output")
+	}
+}
+
+func TestGetPlanAnalysisSummary_AllTested(t *testing.T) {
+	result := &AnalysisResult{
+		TotalPlans:    5,
+		AnalyzedPlans: 0,
+		SkippedPlans:  5,
+		IssuesFound:   0,
+	}
+
+	summary := GetPlanAnalysisSummary(result)
+
+	if !strings.Contains(summary, "all tested") {
+		t.Errorf("expected 'all tested' in summary, got %q", summary)
 	}
 }

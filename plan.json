@@ -433,5 +433,150 @@
         ],
         "expected_output": "Help output is organized into clear categories making it easier for users to find relevant flags",
         "tested": true
+    },
+    {
+        "id": 24,
+        "category": "other",
+        "description": "analyse plan is not workingas expected",
+        "steps": [
+            "analyse plan reviews features that have been completed and features that are in progress",
+            "it should be able to identify features that have not been started",
+            "At the moment it omplans about only the 1st feature in the plan.json that exceeds the criteria for being complex",
+            "can ew check that refine plan is working as expected"
+        ],
+        "expected_output": "The analyse plan is able to identify features that are not working as expected",
+        "tested": true
+    },
+    {
+        "id": 25,
+        "category": "infra",
+        "description": "Implement Project Baselining: Codebase Familiarization and Knowledge Base Creation",
+        "steps": [
+            "Create internal/baseline package for codebase analysis and familiarization",
+            "Implement codebase scanner that walks directory tree and catalogs files by type (source, test, config, docs)",
+            "Implement code structure analyzer that extracts package/module structure, dependencies, and entry points",
+            "Create baseline.json file format storing codebase metadata (structure, tech stack, patterns, conventions)",
+            "Add -baseline flag to initiate baselining process that analyzes current codebase",
+            "Implement baseline knowledge injection into agent prompts for context-aware feature development"
+        ],
+        "expected_output": "Ralph can analyze and familiarize itself with existing codebases, storing knowledge in baseline.json for use in subsequent feature development",
+        "tested": false
+    },
+    {
+        "id": 26,
+        "category": "infra",
+        "description": "Implement Advanced Codebase Analysis: Architecture and Pattern Detection",
+        "steps": [
+            "Extend baseline package with architecture detection (layered, MVC, microservices, monolith patterns)",
+            "Implement design pattern detection (singleton, factory, observer, repository, etc.) via code analysis",
+            "Implement dependency graph builder showing relationships between modules/packages",
+            "Add convention detection (naming patterns, file organization, coding style) from existing code",
+            "Create architecture diagram generation (text-based or JSON format) showing system structure",
+            "Store detected patterns and architecture in baseline.json for reference during development"
+        ],
+        "expected_output": "Ralph understands the architectural patterns and conventions of an existing codebase, enabling consistent feature development",
+        "tested": false
+    },
+    {
+        "id": 27,
+        "category": "infra",
+        "description": "Implement Baseline-Aware Plan Generation: Append Mode for Existing Plans",
+        "steps": [
+            "Modify generatePlanFromNotes() to check if plan.json exists and prompt user for append vs overwrite",
+            "Add -append-plan flag to explicitly enable appending new plan items to existing plan.json",
+            "Add -overwrite-plan flag to explicitly enable overwriting existing plan.json (default behavior)",
+            "Implement plan merging logic that assigns new IDs sequentially after existing plan IDs",
+            "Add conflict detection when appending (duplicate descriptions, overlapping features)",
+            "Update BuildPlanGenerationPrompt() to include existing plan context when appending"
+        ],
+        "expected_output": "Plan generation can append to existing plans rather than overwriting, preserving existing work while adding new features",
+        "tested": false
+    },
+    {
+        "id": 28,
+        "category": "other",
+        "description": "Implement Nuclear Rewrite: Deep Structural Analysis and Reverse Engineering",
+        "steps": [
+            "Create internal/nuclear package for comprehensive codebase analysis and rewrite planning",
+            "Implement deep code analysis that traces function calls, data flows, and control structures",
+            "Build dependency graph analyzer that identifies circular dependencies and tight coupling",
+            "Implement code complexity metrics (cyclomatic complexity, coupling, cohesion) calculation",
+            "Add -nuclear-analyze flag to perform deep structural analysis and generate analysis report",
+            "Create analysis report format (JSON/text) documenting structure, dependencies, and complexity metrics"
+        ],
+        "expected_output": "Ralph can perform deep structural analysis of a codebase, understanding its architecture, dependencies, and complexity",
+        "tested": false
+    },
+    {
+        "id": 29,
+        "category": "other",
+        "description": "Implement Inconsistency Detection: Architecture Violations and Design Drift",
+        "steps": [
+            "Extend nuclear package with inconsistency detection engine",
+            "Implement pattern violation detection (deviations from detected architectural patterns)",
+            "Implement naming convention inconsistency detection across codebase",
+            "Add API contract violation detection (interface mismatches, breaking changes)",
+            "Implement design drift detection (features that don't match original architecture)",
+            "Generate inconsistency report with specific file locations and violation types"
+        ],
+        "expected_output": "Ralph identifies architectural inconsistencies, naming violations, and design drift in the codebase",
+        "tested": false
+    },
+    {
+        "id": 30,
+        "category": "other",
+        "description": "Implement Abandoned Code Detection: Dead Code and Unused Features",
+        "steps": [
+            "Implement dead code detection (unused functions, unreachable code, unused imports)",
+            "Add unused feature detection (features defined but never called or referenced)",
+            "Implement orphaned code detection (code without clear purpose or connection to features)",
+            "Add deprecated pattern detection (old patterns still in use despite newer alternatives)",
+            "Create abandoned code report listing dead code, unused features, and orphaned sections",
+            "Add -detect-abandoned flag to run abandoned code analysis"
+        ],
+        "expected_output": "Ralph identifies dead code, unused features, and abandoned patterns that can be removed or refactored",
+        "tested": false
+    },
+    {
+        "id": 31,
+        "category": "other",
+        "description": "Implement Feature Merging Analysis: Consolidating Overlapping Functionality",
+        "steps": [
+            "Implement feature similarity analysis comparing function signatures, behavior, and purpose",
+            "Add duplicate functionality detection (multiple implementations of same concept)",
+            "Implement feature overlap detection (features with >70% functional overlap)",
+            "Create merging suggestions showing which features can be consolidated",
+            "Generate merge plan showing how to combine overlapping features into unified implementations",
+            "Add -suggest-merges flag to analyze and suggest feature consolidations"
+        ],
+        "expected_output": "Ralph identifies overlapping features and suggests how to merge them into unified, more useful implementations",
+        "tested": false
+    },
+    {
+        "id": 32,
+        "category": "other",
+        "description": "Implement Comprehensive Rewrite Plan Generation: Nuclear Option Output",
+        "steps": [
+            "Create rewrite plan generator that combines all nuclear analysis results",
+            "Implement prioritized refactoring plan with dependencies and risk assessment",
+            "Generate detailed rewrite plan.json with steps for addressing inconsistencies, removing dead code, and merging features",
+            "Add -nuclear-rewrite flag to generate comprehensive rewrite plan from analysis",
+            "Include impact analysis showing what will change and what will break",
+            "Create rewrite plan format that references baseline.json and preserves working patterns"
+        ],
+        "expected_output": "Ralph generates a comprehensive rewrite plan addressing all detected issues, inconsistencies, and opportunities for improvement",
+        "tested": false
+    },
+    {
+        "id": 33,
+        "category": "other",
+        "description": "nuclear option is quite complex, we need to simplify it",
+        "steps": [
+            "users should be be able to 'nuclear' in a few easy but controlled steps",
+            "lwts not fet bogged down in lots of flags here",
+            "There should be really good documentation on how to use the nuclear option"
+        ],
+        "expected_output": "The nuclear option is simplified and easy to use",
+        "tested": false
     }
 ]

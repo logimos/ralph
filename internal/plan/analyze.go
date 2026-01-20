@@ -18,42 +18,96 @@ type AnalysisIssue struct {
 
 // AnalysisResult represents the result of analyzing a plan file
 type AnalysisResult struct {
-	TotalPlans       int             // Total number of plans analyzed
+	TotalPlans       int             // Total number of plans in the file
+	AnalyzedPlans    int             // Number of plans actually analyzed (untested)
+	SkippedPlans     int             // Number of plans skipped (tested)
 	IssuesFound      int             // Number of issues found
 	CompoundFeatures int             // Features with 'and' suggesting multiple features
 	ComplexFeatures  int             // Features with >9 steps
 	Issues           []AnalysisIssue // List of issues found
 }
 
-// AnalyzePlans analyzes a list of plans for potential refinement issues
+// AnalyzePlans analyzes UNTESTED plans for potential refinement issues.
+// This matches the behavior of RefinePlans which only modifies untested features.
+// Use AnalyzeAllPlans to analyze all features including tested ones.
 func AnalyzePlans(plans []Plan) *AnalysisResult {
 	result := &AnalysisResult{
 		TotalPlans: len(plans),
 		Issues:     []AnalysisIssue{},
 	}
 
-	for _, plan := range plans {
+	for _, p := range plans {
+		// Skip tested features - matches RefinePlans behavior
+		if p.Tested {
+			result.SkippedPlans++
+			continue
+		}
+
+		result.AnalyzedPlans++
+
 		// Check for compound features (descriptions with 'and')
-		if isCompoundFeature(plan.Description) {
+		if isCompoundFeature(p.Description) {
 			issue := AnalysisIssue{
-				PlanID:      plan.ID,
+				PlanID:      p.ID,
 				IssueType:   "compound",
-				Description: fmt.Sprintf("Feature #%d description contains 'and', may represent multiple features", plan.ID),
+				Description: fmt.Sprintf("Feature #%d description contains 'and', may represent multiple features", p.ID),
 				Severity:    "suggestion",
-				Suggestions: suggestCompoundSplit(plan),
+				Suggestions: suggestCompoundSplit(p),
 			}
 			result.Issues = append(result.Issues, issue)
 			result.CompoundFeatures++
 		}
 
 		// Check for complex features (>9 steps)
-		if len(plan.Steps) > 9 {
+		if len(p.Steps) > 9 {
 			issue := AnalysisIssue{
-				PlanID:      plan.ID,
+				PlanID:      p.ID,
 				IssueType:   "complex",
-				Description: fmt.Sprintf("Feature #%d has %d steps (>9), may be too complex", plan.ID, len(plan.Steps)),
+				Description: fmt.Sprintf("Feature #%d has %d steps (>9), may be too complex", p.ID, len(p.Steps)),
 				Severity:    "warning",
-				Suggestions: suggestComplexSplit(plan),
+				Suggestions: suggestComplexSplit(p),
+			}
+			result.Issues = append(result.Issues, issue)
+			result.ComplexFeatures++
+		}
+	}
+
+	result.IssuesFound = len(result.Issues)
+	return result
+}
+
+// AnalyzeAllPlans analyzes ALL plans for potential refinement issues,
+// including features that have already been tested.
+func AnalyzeAllPlans(plans []Plan) *AnalysisResult {
+	result := &AnalysisResult{
+		TotalPlans:    len(plans),
+		AnalyzedPlans: len(plans),
+		SkippedPlans:  0,
+		Issues:        []AnalysisIssue{},
+	}
+
+	for _, p := range plans {
+		// Check for compound features (descriptions with 'and')
+		if isCompoundFeature(p.Description) {
+			issue := AnalysisIssue{
+				PlanID:      p.ID,
+				IssueType:   "compound",
+				Description: fmt.Sprintf("Feature #%d description contains 'and', may represent multiple features", p.ID),
+				Severity:    "suggestion",
+				Suggestions: suggestCompoundSplit(p),
+			}
+			result.Issues = append(result.Issues, issue)
+			result.CompoundFeatures++
+		}
+
+		// Check for complex features (>9 steps)
+		if len(p.Steps) > 9 {
+			issue := AnalysisIssue{
+				PlanID:      p.ID,
+				IssueType:   "complex",
+				Description: fmt.Sprintf("Feature #%d has %d steps (>9), may be too complex", p.ID, len(p.Steps)),
+				Severity:    "warning",
+				Suggestions: suggestComplexSplit(p),
 			}
 			result.Issues = append(result.Issues, issue)
 			result.ComplexFeatures++
@@ -298,11 +352,22 @@ func FormatAnalysisResult(result *AnalysisResult) string {
 	var sb strings.Builder
 
 	sb.WriteString("=== Plan Analysis Report ===\n\n")
-	sb.WriteString(fmt.Sprintf("Total plans analyzed: %d\n", result.TotalPlans))
+	sb.WriteString(fmt.Sprintf("Total plans in file: %d\n", result.TotalPlans))
+	sb.WriteString(fmt.Sprintf("Plans analyzed (untested): %d\n", result.AnalyzedPlans))
+	if result.SkippedPlans > 0 {
+		sb.WriteString(fmt.Sprintf("Plans skipped (tested): %d\n", result.SkippedPlans))
+	}
 	sb.WriteString(fmt.Sprintf("Issues found: %d\n", result.IssuesFound))
 
+	if result.AnalyzedPlans == 0 {
+		sb.WriteString("\n✓ No untested features to analyze.\n")
+		sb.WriteString("  All features have been tested - the plan is complete.\n")
+		return sb.String()
+	}
+
 	if result.IssuesFound == 0 {
-		sb.WriteString("\n✓ All plans appear well-structured and self-contained.\n")
+		sb.WriteString("\n✓ All untested features appear well-structured and self-contained.\n")
+		sb.WriteString("  No refinement needed - ready for implementation.\n")
 		return sb.String()
 	}
 
@@ -340,11 +405,14 @@ func FormatAnalysisResult(result *AnalysisResult) string {
 
 // GetPlanAnalysisSummary returns a short summary of the analysis
 func GetPlanAnalysisSummary(result *AnalysisResult) string {
-	if result.IssuesFound == 0 {
-		return fmt.Sprintf("Plan analysis: %d plans, all well-structured", result.TotalPlans)
+	if result.AnalyzedPlans == 0 {
+		return fmt.Sprintf("Plan analysis: %d plans, all tested (none to analyze)", result.TotalPlans)
 	}
-	return fmt.Sprintf("Plan analysis: %d plans, %d issues (%d compound, %d complex)",
-		result.TotalPlans, result.IssuesFound, result.CompoundFeatures, result.ComplexFeatures)
+	if result.IssuesFound == 0 {
+		return fmt.Sprintf("Plan analysis: %d untested plans, all well-structured", result.AnalyzedPlans)
+	}
+	return fmt.Sprintf("Plan analysis: %d untested plans, %d issues (%d compound, %d complex)",
+		result.AnalyzedPlans, result.IssuesFound, result.CompoundFeatures, result.ComplexFeatures)
 }
 
 // RefinementResult represents the result of refining plans
