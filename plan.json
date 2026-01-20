@@ -388,6 +388,9 @@
         "description": "Clarify naming distinction between -analyze-plan and -refine-plan",
         "steps": [
             "The flags -analyze-plan (read-only) and -refine-plan (writes changes) are related but distinct",
+            "Is the difference between the two flags is one writes the other proposes changes but does not write them?",
+            "can a temporary file be used to store the proposed changes so that the user can review them before committing them to the plan.json? - analyze-plan",
+            "then refine pecomes the write operation",
             "Add clearer help text distinguishing that -analyze-plan is read-only while -refine-plan modifies files",
             "Consider renaming -refine-plan to -apply-refinements or -fix-plan to make the modification aspect clearer",
             "If renaming, add backwards compatibility alias for -refine-plan",
@@ -429,6 +432,6 @@
             "Ensure the grouped help output is well-formatted and easy to scan"
         ],
         "expected_output": "Help output is organized into clear categories making it easier for users to find relevant flags",
-        "tested": false
+        "tested": true
     }
 ]

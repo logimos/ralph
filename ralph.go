@@ -33,6 +33,188 @@ var (
 	Version = "dev"
 )
 
+// flagGroup represents a category of flags with a name and description
+type flagGroup struct {
+	name        string
+	description string
+	flags       []string
+}
+
+// getFlagGroups returns all flag groups in display order
+func getFlagGroups() []flagGroup {
+	return []flagGroup{
+		{
+			name:        "Core Options",
+			description: "Essential flags for running Ralph",
+			flags:       []string{"iterations", "agent", "plan", "progress", "config", "build-system", "typecheck", "test", "version"},
+		},
+		{
+			name:        "Plan Display",
+			description: "View and inspect plan status",
+			flags:       []string{"status", "list-tested", "list-untested", "list-deferred"},
+		},
+		{
+			name:        "Plan Analysis & Refinement",
+			description: "Analyze and refine your plan.json",
+			flags:       []string{"analyze-plan", "refine-plan"},
+		},
+		{
+			name:        "Recovery (Per-Feature)",
+			description: "Handle failures during feature implementation",
+			flags:       []string{"max-retries", "recovery-strategy"},
+		},
+		{
+			name:        "Replanning (Plan-Level)",
+			description: "Dynamically adjust the overall plan when issues occur",
+			flags:       []string{"auto-replan", "replan", "replan-strategy", "replan-threshold", "list-versions", "restore-version"},
+		},
+		{
+			name:        "Scope Control",
+			description: "Limit iterations and set deadlines to prevent over-building",
+			flags:       []string{"scope-limit", "deadline"},
+		},
+		{
+			name:        "Memory System",
+			description: "Persistent memory for architectural decisions and conventions",
+			flags:       []string{"memory-file", "show-memory", "clear-memory", "add-memory", "memory-retention"},
+		},
+		{
+			name:        "Nudge System",
+			description: "Lightweight mid-run guidance without stopping execution",
+			flags:       []string{"nudge-file", "nudge", "show-nudges", "clear-nudges"},
+		},
+		{
+			name:        "Milestone Tracking",
+			description: "Track progress toward project milestones",
+			flags:       []string{"milestones", "milestone"},
+		},
+		{
+			name:        "Goal-Oriented Planning",
+			description: "Decompose high-level goals into actionable plans",
+			flags:       []string{"goals-file", "goal", "goal-priority", "goal-status", "list-goals", "decompose-goal", "decompose-all"},
+		},
+		{
+			name:        "Validation",
+			description: "Verify outcomes beyond tests and type checks",
+			flags:       []string{"validate", "validate-feature"},
+		},
+		{
+			name:        "Multi-Agent Collaboration",
+			description: "Coordinate multiple AI agents working in parallel",
+			flags:       []string{"multi-agent", "agents", "parallel-agents", "list-agents"},
+		},
+		{
+			name:        "Output & UI",
+			description: "Control output format and verbosity",
+			flags:       []string{"verbose", "v", "quiet", "q", "no-color", "json-output", "log-level"},
+		},
+		{
+			name:        "Environment",
+			description: "Environment detection and configuration",
+			flags:       []string{"environment"},
+		},
+		{
+			name:        "Plan Generation",
+			description: "Generate plans from notes files",
+			flags:       []string{"generate-plan", "notes", "output"},
+		},
+	}
+}
+
+// printGroupedFlags prints flags organized by category
+func printGroupedFlags() {
+	groups := getFlagGroups()
+	
+	// Build a map of flag names to their flag.Flag objects
+	flagMap := make(map[string]*flag.Flag)
+	flag.VisitAll(func(f *flag.Flag) {
+		flagMap[f.Name] = f
+	})
+	
+	// Track which flags have been printed
+	printedFlags := make(map[string]bool)
+	
+	for _, group := range groups {
+		fmt.Fprintf(os.Stderr, "  %s:\n", group.name)
+		fmt.Fprintf(os.Stderr, "    %s\n\n", group.description)
+		
+		for _, name := range group.flags {
+			f, ok := flagMap[name]
+			if !ok {
+				continue
+			}
+			printedFlags[name] = true
+			
+			// Format the flag line similar to flag.PrintDefaults() but indented
+			s := fmt.Sprintf("    -%s", f.Name)
+			name, usage := flag.UnquoteUsage(f)
+			if len(name) > 0 {
+				s += " " + name
+			}
+			
+			// Boolean flags with true default
+			if isBoolFlag(f) {
+				if f.DefValue == "true" {
+					s += " (default true)"
+				}
+			} else if f.DefValue != "" && f.DefValue != "0" {
+				// Non-boolean flags with non-zero/empty defaults
+				s += fmt.Sprintf(" (default %q)", f.DefValue)
+			}
+			
+			// Pad to align usage text
+			if len(s) < 30 {
+				s += strings.Repeat(" ", 30-len(s))
+			} else {
+				s += "\n" + strings.Repeat(" ", 30)
+			}
+			s += usage
+			
+			fmt.Fprintf(os.Stderr, "%s\n", s)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+	
+	// Print any flags that weren't in a group (shouldn't happen, but just in case)
+	var ungrouped []string
+	flag.VisitAll(func(f *flag.Flag) {
+		if !printedFlags[f.Name] {
+			ungrouped = append(ungrouped, f.Name)
+		}
+	})
+	
+	if len(ungrouped) > 0 {
+		fmt.Fprintf(os.Stderr, "  Other Options:\n\n")
+		for _, name := range ungrouped {
+			f := flagMap[name]
+			s := fmt.Sprintf("    -%s", f.Name)
+			n, usage := flag.UnquoteUsage(f)
+			if len(n) > 0 {
+				s += " " + n
+			}
+			if f.DefValue != "" && f.DefValue != "0" && !isBoolFlag(f) {
+				s += fmt.Sprintf(" (default %q)", f.DefValue)
+			}
+			if len(s) < 30 {
+				s += strings.Repeat(" ", 30-len(s))
+			} else {
+				s += "\n" + strings.Repeat(" ", 30)
+			}
+			s += usage
+			fmt.Fprintf(os.Stderr, "%s\n", s)
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+}
+
+// isBoolFlag checks if a flag is a boolean flag
+func isBoolFlag(f *flag.Flag) bool {
+	if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); ok {
+		return bf.IsBoolFlag()
+	}
+	return false
+}
+
 func main() {
 	cfg := parseFlags()
 
@@ -264,8 +446,9 @@ func parseFlags() *config.Config {
 		}
 		fmt.Fprintf(os.Stderr, "Ralph %s - AI-Assisted Development Workflow CLI\n\n", versionDisplay)
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
+		
+		// Print grouped flags
+		printGroupedFlags()
 		fmt.Fprintf(os.Stderr, "\nBuild System Presets:\n")
 		fmt.Fprintf(os.Stderr, "  pnpm    - pnpm typecheck / pnpm test\n")
 		fmt.Fprintf(os.Stderr, "  npm     - npm run typecheck / npm test\n")

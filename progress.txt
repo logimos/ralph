@@ -1291,3 +1291,75 @@ Categorized all flags into groups:
 - All tests continue to pass - no code changes were made, only plan.json updated
 - Consider addressing these in order of user impact: #23 → #19 → #20 → #21 → #22
 
+## 2026-01-20: Flag Grouping and Help Categorization (Feature #23)
+
+### Completed
+- Implemented custom `printGroupedFlags()` function in ralph.go to replace `flag.PrintDefaults()`
+- Created `flagGroup` struct type to define flag categories with name, description, and flag list
+- Created `getFlagGroups()` function that returns 15 organized flag categories
+- Implemented `isBoolFlag()` helper function for proper flag formatting
+- Replaced the overwhelming 50+ flag alphabetical list with organized categories
+
+### Flag Categories Implemented
+The help output now organizes flags into 15 logical categories:
+
+| Category | Description | Flags Count |
+|----------|-------------|-------------|
+| Core Options | Essential flags for running Ralph | 9 |
+| Plan Display | View and inspect plan status | 4 |
+| Plan Analysis & Refinement | Analyze and refine plan.json | 2 |
+| Recovery (Per-Feature) | Handle failures during implementation | 2 |
+| Replanning (Plan-Level) | Dynamically adjust plans | 6 |
+| Scope Control | Limit iterations and deadlines | 2 |
+| Memory System | Persistent architectural memory | 5 |
+| Nudge System | Mid-run guidance | 4 |
+| Milestone Tracking | Track project milestones | 2 |
+| Goal-Oriented Planning | Decompose high-level goals | 7 |
+| Validation | Verify outcomes | 2 |
+| Multi-Agent Collaboration | Coordinate AI agents | 4 |
+| Output & UI | Control output format | 7 |
+| Environment | Environment detection | 1 |
+| Plan Generation | Generate plans from notes | 3 |
+
+### Example Help Output (excerpt)
+```
+Ralph dev - AI-Assisted Development Workflow CLI
+
+Usage: ./ralph [options]
+
+  Core Options:
+    Essential flags for running Ralph
+
+    -iterations int           Number of iterations to run (required)
+    -agent string (default "cursor-agent")
+                              Command name for the AI agent CLI tool
+    ...
+
+  Recovery (Per-Feature):
+    Handle failures during feature implementation
+
+    -max-retries int (default "3")
+                              Maximum retries per feature before escalation (default: 3)
+    -recovery-strategy string (default "retry")
+                              Recovery strategy: retry, skip, rollback (default: retry)
+
+  Replanning (Plan-Level):
+    Dynamically adjust the overall plan when issues occur
+    ...
+```
+
+### Key Design Decisions
+- Each category has a name and short description to help users understand the purpose
+- Flags within each category are grouped logically (not alphabetically)
+- Default values are shown inline with flag definitions
+- "Other Options" fallback catches any flags not assigned to a category (safety net)
+- Category names clearly distinguish related concepts (e.g., "Recovery (Per-Feature)" vs "Replanning (Plan-Level)")
+
+### Notes for Next Developer
+- The `getFlagGroups()` function defines all flag categories - add new flags there when implementing new features
+- The category order in `getFlagGroups()` determines the display order in help output
+- If a flag is not assigned to any category, it will appear in "Other Options" at the end
+- Consider adding `-help-<category>` flags in future for detailed category help (Feature #22 recommendation)
+- The grouped help significantly improves discoverability of Ralph's features
+- All 280+ tests continue to pass
+
