@@ -399,7 +399,7 @@
             "Consider adding a -dry-run mode to -refine-plan that shows changes without writing"
         ],
         "expected_output": "The distinction between analysis-only and modification flags is clear to users",
-        "tested": false
+        "tested": true
     },
     {
         "id": 22,

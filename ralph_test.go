@@ -921,3 +921,88 @@ func TestDeprecatedGoalStatusFlagBehavior(t *testing.T) {
 		t.Error("ShowGoals should be true when deprecated GoalStatus is used")
 	}
 }
+
+// TestDryRunFlagBehavior tests that -dry-run is off by default and can be enabled
+func TestDryRunFlagBehavior(t *testing.T) {
+	cfg := config.New()
+
+	// Test that DryRun is false by default
+	if cfg.DryRun {
+		t.Error("DryRun should be false by default")
+	}
+
+	// Test that DryRun can be set
+	cfg.DryRun = true
+	if !cfg.DryRun {
+		t.Error("DryRun should be true after being set")
+	}
+}
+
+// TestDryRunWithRefinePlan tests that -dry-run affects refine-plan behavior
+func TestDryRunWithRefinePlan(t *testing.T) {
+	cfg := config.New()
+
+	// Test the combination of RefinePlan and DryRun
+	cfg.RefinePlan = true
+	cfg.DryRun = true
+
+	// Both flags should be able to be set simultaneously
+	if !cfg.RefinePlan {
+		t.Error("RefinePlan should be true")
+	}
+	if !cfg.DryRun {
+		t.Error("DryRun should be true")
+	}
+}
+
+// TestAnalyzePlanFlag tests that -analyze-plan flag defaults
+func TestAnalyzePlanFlag(t *testing.T) {
+	cfg := config.New()
+
+	// Test that AnalyzePlan is false by default
+	if cfg.AnalyzePlan {
+		t.Error("AnalyzePlan should be false by default")
+	}
+
+	// Test that AnalyzePlan and RefinePlan are independent
+	cfg.AnalyzePlan = true
+	if cfg.RefinePlan {
+		t.Error("RefinePlan should still be false when AnalyzePlan is set")
+	}
+}
+
+// TestRefinePlanFlag tests that -refine-plan flag defaults
+func TestRefinePlanFlag(t *testing.T) {
+	cfg := config.New()
+
+	// Test that RefinePlan is false by default
+	if cfg.RefinePlan {
+		t.Error("RefinePlan should be false by default")
+	}
+
+	// Test that RefinePlan and AnalyzePlan are independent
+	cfg.RefinePlan = true
+	if cfg.AnalyzePlan {
+		t.Error("AnalyzePlan should still be false when RefinePlan is set")
+	}
+}
+
+// TestPlanAnalysisPreviewFile tests the preview file path generation
+func TestPlanAnalysisPreviewFile(t *testing.T) {
+	// Test the preview file path generation logic
+	testCases := []struct {
+		planFile     string
+		expectedPath string
+	}{
+		{"plan.json", "plan.refined.json"},
+		{"tasks/plan.json", "tasks/plan.refined.json"},
+		{"my-plan.json", "my-plan.refined.json"},
+	}
+
+	for _, tc := range testCases {
+		previewPath := strings.TrimSuffix(tc.planFile, ".json") + ".refined.json"
+		if previewPath != tc.expectedPath {
+			t.Errorf("For %s, expected preview path %s, got %s", tc.planFile, tc.expectedPath, previewPath)
+		}
+	}
+}

@@ -252,6 +252,42 @@ enable_multi_agent: false
 | Parallel | `-parallel-agents` | `parallel_agents` | `2` | Max parallel agents |
 | List Agents | `-list-agents` | N/A | N/A | List configured agents |
 
+### Plan Analysis & Refinement Options
+
+Ralph can analyze your plan.json for potential improvements and apply refinements.
+
+| Option | CLI Flag | Description |
+|--------|----------|-------------|
+| Analyze Plan | `-analyze-plan` | Analyze plan (read-only), write preview to `plan.refined.json` |
+| Refine Plan | `-refine-plan` | Apply refinements (writes to `plan.json`, creates backup) |
+| Dry Run | `-dry-run` | Preview changes without writing (use with `-refine-plan`) |
+
+**Two-step workflow:**
+1. **Analyze first**: Run `-analyze-plan` to see suggestions and generate a preview file
+2. **Review**: Compare `plan.json` with `plan.refined.json` using `diff`
+3. **Apply**: Run `-refine-plan` to apply the changes (or `-refine-plan -dry-run` to preview)
+
+**What gets detected:**
+- **Compound features**: Descriptions with "and" suggesting multiple features
+- **Complex features**: Features with >9 steps that may need splitting
+
+**Example workflow:**
+```bash
+# Step 1: Analyze and generate preview
+ralph -analyze-plan
+# This shows analysis and writes proposed changes to plan.refined.json
+
+# Step 2: Review the diff
+diff plan.json plan.refined.json
+
+# Step 3a: Preview what refinements would be applied
+ralph -refine-plan -dry-run
+
+# Step 3b: Apply the refinements
+ralph -refine-plan
+# This writes to plan.json and creates plan.json.bak as backup
+```
+
 ### Version Options
 
 | Option | CLI Flag | Description |

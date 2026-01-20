@@ -106,8 +106,9 @@ type Config struct {
 	ListAgents       bool   // List configured agents
 	EnableMultiAgent bool   // Enable multi-agent mode
 	// Plan analysis configuration
-	AnalyzePlan bool // Analyze plan for refinement suggestions
-	RefinePlan  bool // Refine plan by splitting complex features
+	AnalyzePlan bool // Analyze plan for refinement suggestions (read-only, writes preview to plan.refined.json)
+	RefinePlan  bool // Apply plan refinement by splitting complex features (writes to plan.json)
+	DryRun      bool // Show what changes would be made without writing (for -refine-plan)
 }
 
 // New creates a new Config with default values

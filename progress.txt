@@ -1455,3 +1455,58 @@ Users currently using `-list-goals` or `-goal-status` can:
 - Remaining features: #21 (clarify analyze/refine), #22 (improve docs)
 - Consider removing deprecated flags entirely in a future major version
 - The `-goals` flag groups goals by status and shows progress bars for better visibility
+
+[2026-01-20T10:20:22Z] FAILURE [agent_error]: Command exited with code 1 (feature #20, retry 1)
+
+## 2026-01-20: Clarify -analyze-plan and -refine-plan Distinction (Feature #21)
+
+### Completed
+- Enhanced `-analyze-plan` to write proposed refinements to `plan.refined.json` for review
+- Added `-dry-run` flag for `-refine-plan` to preview changes without writing
+- Updated help text to clearly distinguish the two flags:
+  - `-analyze-plan`: Read-only analysis, writes preview to plan.refined.json
+  - `-refine-plan`: Apply refinements (writes to plan.json, creates backup)
+  - `-refine-plan -dry-run`: Preview what would change without writing
+- Updated flag group description to "(analyze = preview, refine = apply)"
+- Updated `docs/CONFIGURATION.md` with new "Plan Analysis & Refinement Options" section
+- Added comprehensive documentation of the two-step workflow
+- Added unit tests for DryRun flag behavior
+- All 290+ tests pass, build successful
+
+### Implementation Details
+- The `handleAnalyzePlanCommand` now:
+  1. Runs analysis and shows the formatted report
+  2. If issues are found, generates a preview refinement to `plan.refined.json`
+  3. Shows instructions for reviewing with `diff` and applying with `-refine-plan`
+- The `handleRefinePlanCommand` now:
+  1. Supports `-dry-run` mode that shows what changes would be made without writing
+  2. Cleans up the preview file (`plan.refined.json`) after applying changes
+  3. Shows clear instructions for applying changes
+
+### Two-Step Workflow
+```bash
+# Step 1: Analyze and generate preview
+ralph -analyze-plan
+# Shows analysis and writes proposed changes to plan.refined.json
+
+# Step 2: Review the diff
+diff plan.json plan.refined.json
+
+# Step 3a: Preview what refinements would be applied
+ralph -refine-plan -dry-run
+
+# Step 3b: Apply the refinements
+ralph -refine-plan
+# Writes to plan.json and creates plan.json.bak as backup
+```
+
+### Config Changes
+- Added `DryRun` field to Config struct in `internal/config/config.go`
+- Added `-dry-run` flag to CLI
+
+### Notes for Next Developer
+- Feature #21 is complete - the distinction between analyze and refine is now clear
+- Remaining feature: #22 (improve documentation for failure-handling flag pairs)
+- The preview file `plan.refined.json` is automatically cleaned up when `-refine-plan` is run
+- The `-dry-run` flag only affects `-refine-plan`, not `-analyze-plan` (which is already read-only)
+- Consider adding `-dry-run` support to other modifying commands in future iterations

@@ -55,8 +55,8 @@ func getFlagGroups() []flagGroup {
 		},
 		{
 			name:        "Plan Analysis & Refinement",
-			description: "Analyze and refine your plan.json",
-			flags:       []string{"analyze-plan", "refine-plan"},
+			description: "Analyze and refine your plan.json (analyze = preview, refine = apply)",
+			flags:       []string{"analyze-plan", "refine-plan", "dry-run"},
 		},
 		{
 			name:        "Recovery (Per-Feature)",
@@ -437,8 +437,9 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.ListAgents, "list-agents", false, "List configured agents")
 	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Enable multi-agent collaboration mode")
 	// Plan analysis flags
-	flag.BoolVar(&cfg.AnalyzePlan, "analyze-plan", false, "Analyze plan for refinement suggestions")
-	flag.BoolVar(&cfg.RefinePlan, "refine-plan", false, "Refine plan by splitting complex features (rewrites plan.json)")
+	flag.BoolVar(&cfg.AnalyzePlan, "analyze-plan", false, "Analyze plan and preview refinements (read-only, writes to plan.refined.json for review)")
+	flag.BoolVar(&cfg.RefinePlan, "refine-plan", false, "Apply plan refinements by splitting complex features (writes to plan.json)")
+	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Show what changes would be made without writing (use with -refine-plan)")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -636,9 +637,14 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    - Compound features: Descriptions with 'and' suggesting multiple features\n")
 		fmt.Fprintf(os.Stderr, "    - Complex features: Features with >9 steps that may need splitting\n")
 		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Two-step workflow (analyze then apply):\n")
+		fmt.Fprintf(os.Stderr, "    1. -analyze-plan   Review-only analysis, writes preview to plan.refined.json\n")
+		fmt.Fprintf(os.Stderr, "    2. -refine-plan    Apply refinements (writes to plan.json, creates backup)\n")
+		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Commands:\n")
-		fmt.Fprintf(os.Stderr, "    -analyze-plan          Analyze plan and suggest refinements\n")
-		fmt.Fprintf(os.Stderr, "    -refine-plan           Refine plan by splitting complex features (rewrites plan.json)\n")
+		fmt.Fprintf(os.Stderr, "    -analyze-plan          Analyze plan, show suggestions, write preview file\n")
+		fmt.Fprintf(os.Stderr, "    -refine-plan           Apply refinements (modifies plan.json)\n")
+		fmt.Fprintf(os.Stderr, "    -refine-plan -dry-run  Preview what -refine-plan would do (no changes)\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -671,8 +677,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -decompose-goal auth             # Decompose specific goal\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-agents                     # Show configured agents\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -multi-agent -iterations 5       # Run with multi-agent collaboration\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -analyze-plan                    # Analyze plan for refinement suggestions\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -refine-plan                     # Refine plan by splitting complex features\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -analyze-plan                    # Analyze plan and write preview to plan.refined.json\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -refine-plan -dry-run            # Preview what refinements would be applied\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -refine-plan                     # Apply refinements to plan.json\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -2419,6 +2426,7 @@ func getIDs(plans []plan.Plan) []int {
 }
 
 // handleAnalyzePlanCommand analyzes the plan for refinement suggestions
+// and writes proposed refinements to plan.refined.json for review
 func handleAnalyzePlanCommand(cfg *config.Config) error {
 	// Check if plan file exists
 	if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
@@ -2432,15 +2440,42 @@ func handleAnalyzePlanCommand(cfg *config.Config) error {
 	}
 
 	// Analyze plans
-	result := plan.AnalyzePlans(plans)
+	analysisResult := plan.AnalyzePlans(plans)
 
-	// Print formatted result
-	fmt.Print(plan.FormatAnalysisResult(result))
+	// Print formatted analysis result
+	fmt.Print(plan.FormatAnalysisResult(analysisResult))
+
+	// If issues were found, generate and write preview refinements
+	if analysisResult.IssuesFound > 0 {
+		// Generate refined plan
+		refinementResult := plan.RefinePlans(plans)
+		
+		if refinementResult.SplitFeatures > 0 {
+			// Write preview to plan.refined.json
+			previewPath := strings.TrimSuffix(cfg.PlanFile, ".json") + ".refined.json"
+			if err := plan.WriteFile(previewPath, refinementResult.NewPlans); err != nil {
+				return fmt.Errorf("failed to write preview file: %w", err)
+			}
+			
+			fmt.Println("\n--- Preview ---")
+			fmt.Printf("Proposed refinements written to: %s\n", previewPath)
+			fmt.Println()
+			fmt.Println("To review the proposed changes:")
+			fmt.Printf("  diff %s %s\n", cfg.PlanFile, previewPath)
+			fmt.Println()
+			fmt.Println("To apply the refinements:")
+			fmt.Printf("  %s -refine-plan\n", os.Args[0])
+			fmt.Println()
+			fmt.Println("To preview without applying:")
+			fmt.Printf("  %s -refine-plan -dry-run\n", os.Args[0])
+		}
+	}
 
 	return nil
 }
 
 // handleRefinePlanCommand refines the plan by splitting complex features
+// Supports -dry-run mode to preview changes without writing
 func handleRefinePlanCommand(cfg *config.Config) error {
 	// Check if plan file exists
 	if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
@@ -2453,14 +2488,33 @@ func handleRefinePlanCommand(cfg *config.Config) error {
 		return fmt.Errorf("failed to load plan file: %w", err)
 	}
 
+	// Refine plans
+	result := plan.RefinePlans(plans)
+
+	// Handle dry-run mode
+	if cfg.DryRun {
+		fmt.Println("=== Dry Run Mode (no changes written) ===")
+		fmt.Println()
+		fmt.Print(plan.FormatRefinementResult(result))
+		
+		if result.SplitFeatures > 0 {
+			fmt.Println("\n--- What Would Happen ---")
+			fmt.Printf("The following changes would be applied to %s:\n", cfg.PlanFile)
+			for _, change := range result.Changes {
+				fmt.Printf("  • %s\n", change)
+			}
+			fmt.Println()
+			fmt.Println("To apply these changes, run without -dry-run:")
+			fmt.Printf("  %s -refine-plan\n", os.Args[0])
+		}
+		return nil
+	}
+
 	// Create a backup before modifying
 	backupPath := cfg.PlanFile + ".bak"
 	if err := plan.WriteFile(backupPath, plans); err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
-
-	// Refine plans
-	result := plan.RefinePlans(plans)
 
 	// Only write if changes were made
 	if result.SplitFeatures > 0 {
@@ -2468,6 +2522,10 @@ func handleRefinePlanCommand(cfg *config.Config) error {
 			return fmt.Errorf("failed to write refined plan: %w", err)
 		}
 		fmt.Printf("Backup saved to: %s\n\n", backupPath)
+		
+		// Clean up preview file if it exists (from -analyze-plan)
+		previewPath := strings.TrimSuffix(cfg.PlanFile, ".json") + ".refined.json"
+		os.Remove(previewPath) // Ignore error - file may not exist
 	} else {
 		// Remove backup if no changes
 		os.Remove(backupPath)
