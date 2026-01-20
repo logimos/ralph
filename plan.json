@@ -315,5 +315,120 @@
         ],
         "expected_output": "Comprehensive documentation with examples, architecture docs, and troubleshooting guides enabling easy onboarding and contribution",
         "tested": true
+    },
+    {
+        "id": 16,
+        "category": "chore",
+        "description": "Plan Step Refinement",
+        "steps": [
+            "If a plan description has 'and', in it consider if it is actually multiple features and split them into separate plan items",
+            "Step features can be long and complex, consider if it is actually multiple features and split them into separate plan items, for example some steps > 9 steps"
+        ],
+        "expected_output": "Plan items are self-contained and implementable, and are not too complex",
+        "tested": true
+    },
+    {
+        "id": 17,
+        "category": "chore",
+        "description": "rewrite the plan.json not just analyse it",
+        "steps": [
+            "rewrite the plan.json not just analyse it as we did in feature 16"
+        ],
+        "expected_output": "The plan.json is rewritten with the suggested refinements",
+        "tested": true
+    },
+    {
+        "id": 18,
+        "category": "chore",
+        "description": "analyse the feature flags that modify the plan.json",
+        "steps": [
+            "there are a lot of feature flags that sound similar. analyse them and make sure they are not redundant or conflicting or similar in functionality",
+            "for example -analyze-plan and -refine-plan are similar, sound similar",
+            "if you identify a redundant or conflicting or similar in functionality append to the plan.json as work items to be completed",
+            "Ensure you detail the code changes that need to be made to the feature flags that are redundant or conflicting or similar in functionality so that the code can be updated/deleted in future iterations"
+        ],
+        "expected_output": "The code is analysed and the feature flags that are redundant or conflicting or similar in functionality are appended to the plan.json as work items to be completed",
+        "tested": true
+    },
+    {
+        "id": 19,
+        "category": "chore",
+        "description": "Consolidate redundant -status flag with -list-tested and -list-untested",
+        "steps": [
+            "In ralph.go, the -status flag functionality (ListStatus) duplicates -list-tested + -list-untested combined",
+            "Consider deprecating -status flag with a warning message pointing users to use -list-tested and/or -list-untested",
+            "Alternatively, rename -status to -list-all for clarity and keep it as a convenience alias",
+            "Update help text in flag.Usage to clarify the relationship between these three flags",
+            "Update docs/CONFIGURATION.md to document the deprecation or clarification",
+            "Add unit tests to verify deprecation warning is shown when -status is used"
+        ],
+        "expected_output": "The -status flag is either deprecated with clear guidance or renamed for clarity, reducing user confusion",
+        "tested": false
+    },
+    {
+        "id": 20,
+        "category": "chore",
+        "description": "Merge -goal-status and -list-goals into unified goal display",
+        "steps": [
+            "In ralph.go handleGoalCommands(), -goal-status shows progress bars while -list-goals shows a basic list",
+            "These two commands serve nearly identical purposes and could confuse users",
+            "Option A: Merge into single -goals flag that shows both list and progress (like -milestones does)",
+            "Option B: Rename -list-goals to -goals and have -goal-status as an alias or verbose mode",
+            "Update flag definitions in parseFlags() to implement the chosen option",
+            "Update Config struct in internal/config/config.go to remove redundant field",
+            "Update help text and docs/CONFIGURATION.md",
+            "Add migration note for users using the deprecated flag"
+        ],
+        "expected_output": "Goal-related display commands are unified into a single intuitive flag, matching the -milestones pattern",
+        "tested": false
+    },
+    {
+        "id": 21,
+        "category": "chore",
+        "description": "Clarify naming distinction between -analyze-plan and -refine-plan",
+        "steps": [
+            "The flags -analyze-plan (read-only) and -refine-plan (writes changes) are related but distinct",
+            "Add clearer help text distinguishing that -analyze-plan is read-only while -refine-plan modifies files",
+            "Consider renaming -refine-plan to -apply-refinements or -fix-plan to make the modification aspect clearer",
+            "If renaming, add backwards compatibility alias for -refine-plan",
+            "Update flag.Usage in ralph.go to group these flags together with clear descriptions",
+            "Update docs/CONFIGURATION.md with clearer documentation",
+            "Consider adding a -dry-run mode to -refine-plan that shows changes without writing"
+        ],
+        "expected_output": "The distinction between analysis-only and modification flags is clear to users",
+        "tested": false
+    },
+    {
+        "id": 22,
+        "category": "chore",
+        "description": "Improve documentation for failure-handling flag pairs",
+        "steps": [
+            "The flags -max-retries/-recovery-strategy relate to per-feature recovery",
+            "The flags -replan-threshold/-replan-strategy relate to whole-plan replanning",
+            "These two systems work at different levels but have similar naming patterns that could confuse users",
+            "Add a clear section in flag.Usage explaining the two-tier failure handling (recovery vs replanning)",
+            "Group recovery flags together and replan flags together in help output",
+            "Consider adding --help-recovery and --help-replan flags for detailed documentation",
+            "Update docs/FEATURES.md with a diagram showing how recovery escalates to replanning",
+            "Add examples in docs/TROUBLESHOOTING.md showing when to use each system"
+        ],
+        "expected_output": "Users clearly understand the difference between per-feature recovery and plan-level replanning",
+        "tested": false
+    },
+    {
+        "id": 23,
+        "category": "chore",
+        "description": "Add flag grouping and categorization to help output",
+        "steps": [
+            "The current flag.Usage output lists all 50+ flags in a single block which is overwhelming",
+            "Group flags by category: Core, Plan Management, Recovery, Replanning, Memory, Nudges, Goals, Multi-Agent, UI, etc.",
+            "Implement a custom usage printer that organizes flags into logical sections",
+            "Add short descriptions for each category before its flags",
+            "Consider adding -help-<category> flags for detailed help on specific features (e.g., -help-goals)",
+            "Update flag.Usage function in ralph.go parseFlags()",
+            "Ensure the grouped help output is well-formatted and easy to scan"
+        ],
+        "expected_output": "Help output is organized into clear categories making it easier for users to find relevant flags",
+        "tested": false
     }
 ]

@@ -1224,3 +1224,70 @@ Smaller features are easier to:
 - New plan IDs are assigned sequentially starting from max(existingIDs) + 1
 - The PRD (all 17 features) is now COMPLETE
 
+
+## 2026-01-20: Feature Flag Analysis (Feature #18)
+
+### Completed
+- Analyzed all 50+ CLI feature flags in ralph.go for redundancy, conflicts, and similar functionality
+- Identified 5 areas of concern with overlapping or confusing flag patterns
+- Added 5 new plan items (#19-#23) to address the identified issues
+
+### Analysis Summary
+
+#### Flags Analyzed
+Categorized all flags into groups:
+- **Core**: -iterations, -agent, -plan, -progress, -config, -build-system, -typecheck, -test
+- **Plan Display**: -status, -list-tested, -list-untested, -list-deferred, -analyze-plan, -refine-plan
+- **Recovery**: -recovery-strategy, -max-retries
+- **Replanning**: -auto-replan, -replan, -replan-strategy, -replan-threshold, -list-versions, -restore-version
+- **Memory**: -memory-file, -show-memory, -clear-memory, -add-memory, -memory-retention
+- **Nudges**: -nudge-file, -nudge, -show-nudges, -clear-nudges
+- **Milestones**: -milestones, -milestone
+- **Goals**: -goals-file, -goal, -goal-priority, -goal-status, -list-goals, -decompose-goal, -decompose-all
+- **Multi-Agent**: -agents, -parallel-agents, -list-agents, -multi-agent
+- **Validation**: -validate, -validate-feature
+- **UI**: -verbose/-v, -quiet/-q, -no-color, -json-output, -log-level
+- **Other**: -environment, -scope-limit, -deadline, -generate-plan, -notes, -output, -version
+
+#### Identified Issues
+
+1. **Redundant -status flag** (Plan Item #19)
+   - `-status` shows same output as `-list-tested` + `-list-untested` combined
+   - Recommendation: Deprecate or rename to `-list-all`
+   - Code location: ralph.go lines 90-107, 199
+
+2. **Overlapping goal display flags** (Plan Item #20)
+   - `-goal-status` and `-list-goals` serve nearly identical purposes
+   - Recommendation: Merge into single `-goals` flag like `-milestones`
+   - Code location: ralph.go lines 1895-1979, config.go lines 97-98
+
+3. **Similar naming -analyze-plan vs -refine-plan** (Plan Item #21)
+   - Both relate to plan analysis but one is read-only, other writes
+   - Recommendation: Rename -refine-plan to -apply-refinements or add -dry-run
+   - Code location: ralph.go lines 256-257, 2179-2238
+
+4. **Confusing failure-handling flag pairs** (Plan Item #22)
+   - Recovery (-max-retries, -recovery-strategy) vs Replanning (-replan-threshold, -replan-strategy)
+   - These work at different levels but have similar naming
+   - Recommendation: Better documentation and grouping in help output
+
+5. **Overwhelming help output** (Plan Item #23)
+   - 50+ flags in single block is hard to scan
+   - Recommendation: Group flags by category in help output
+   - Code location: ralph.go flag.Usage function lines 259-493
+
+### Flags Working Well (No Changes Needed)
+- Memory flags (-show-memory, -clear-memory, -add-memory) - consistent pattern ✓
+- Nudge flags (-show-nudges, -clear-nudges, -nudge) - consistent pattern ✓
+- Milestone flags (-milestones, -milestone) - clear distinction ✓
+- UI flags (-verbose/-v, -quiet/-q) - standard aliases ✓
+- Validation flags (-validate, -validate-feature) - clear purpose ✓
+
+### Notes for Next Developer
+- Feature #18 analysis is complete - identified issues are now tracked as Plan Items #19-#23
+- Each new plan item includes specific code locations and recommendations
+- Priority: #23 (help grouping) would benefit users the most as it improves discoverability
+- The flag analysis did NOT find any actual conflicts - just opportunities for clarity
+- All tests continue to pass - no code changes were made, only plan.json updated
+- Consider addressing these in order of user impact: #23 → #19 → #20 → #21 → #22
+
