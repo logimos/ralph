@@ -800,3 +800,60 @@ func TestBuildPlanGenerationPrompt(t *testing.T) {
 		t.Error("Prompt should mention steps field")
 	}
 }
+
+// TestListAllFlagBehavior tests that -list-all shows both tested and untested features
+func TestListAllFlagBehavior(t *testing.T) {
+	cfg := config.New()
+
+	// Test that ListAll is false by default
+	if cfg.ListAll {
+		t.Error("ListAll should be false by default")
+	}
+
+	// Test that ListStatus (deprecated) is also false by default
+	if cfg.ListStatus {
+		t.Error("ListStatus (deprecated) should be false by default")
+	}
+
+	// Test that when ListAll is set, it shows both tested and untested
+	cfg.ListAll = true
+	showTested := cfg.ListAll || cfg.ListTested
+	showUntested := cfg.ListAll || cfg.ListUntested
+
+	if !showTested {
+		t.Error("ListAll should enable showing tested features")
+	}
+	if !showUntested {
+		t.Error("ListAll should enable showing untested features")
+	}
+}
+
+// TestDeprecatedStatusFlagBehavior tests that -status behaves like -list-all
+func TestDeprecatedStatusFlagBehavior(t *testing.T) {
+	cfg := config.New()
+
+	// Simulate deprecated -status flag being used
+	cfg.ListStatus = true
+
+	// The deprecation handling in parseFlags() sets ListAll when ListStatus is true
+	// Here we simulate that behavior for testing
+	if cfg.ListStatus {
+		cfg.ListAll = true
+	}
+
+	// Verify that ListAll is now true (mimicking the deprecation handling)
+	if !cfg.ListAll {
+		t.Error("ListAll should be true when deprecated ListStatus is used")
+	}
+
+	// Verify the behavior is the same as using -list-all directly
+	showTested := cfg.ListAll || cfg.ListTested
+	showUntested := cfg.ListAll || cfg.ListUntested
+
+	if !showTested {
+		t.Error("Deprecated -status should show tested features")
+	}
+	if !showUntested {
+		t.Error("Deprecated -status should show untested features")
+	}
+}

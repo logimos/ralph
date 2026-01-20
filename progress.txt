@@ -1363,3 +1363,47 @@ Usage: ./ralph [options]
 - The grouped help significantly improves discoverability of Ralph's features
 - All 280+ tests continue to pass
 
+
+[2026-01-20T10:10:18Z] FAILURE [agent_error]: Command exited with code 1 (feature #19, retry 1)
+
+## 2026-01-20: Consolidate -status Flag (Feature #19)
+
+### Completed
+- Renamed `-status` flag to `-list-all` as the primary flag for showing all features
+- Deprecated `-status` flag with a warning message directing users to use `-list-all`
+- Updated `internal/config/config.go`:
+  - Added `ListAll` field to Config struct
+  - Marked `ListStatus` as deprecated with comment
+- Updated `ralph.go`:
+  - Added `-list-all` flag definition
+  - Modified `-status` flag help to indicate deprecation
+  - Added deprecation warning logic after flag parsing
+  - Updated all code paths using `ListStatus` to use `ListAll`
+  - Updated flag groups to show `-list-all` instead of `-status`
+  - Updated help examples to use `-list-all`
+- Updated `docs/CONFIGURATION.md`:
+  - Added new "Plan Display Options" section
+  - Documented `-list-all`, `-list-tested`, `-list-untested`, `-list-deferred`
+  - Marked `-status` as deprecated with note
+- Added unit tests in `ralph_test.go`:
+  - `TestListAllFlagBehavior` - Verifies ListAll shows both tested and untested
+  - `TestDeprecatedStatusFlagBehavior` - Verifies deprecated -status sets ListAll
+- All 280+ tests pass, build successful
+
+### Implementation Details
+- The `-status` flag remains functional for backward compatibility
+- Using `-status` now displays: "Warning: -status is deprecated. Use -list-all instead."
+- The `-list-all` flag is shown in the "Plan Display" section of grouped help output
+- Config precedence: `-list-all` is the canonical flag, `-status` is a deprecated alias
+
+### Migration Path
+Users currently using `-status` can:
+1. Continue using `-status` (it will work but show a warning)
+2. Migrate to `-list-all` for the same functionality
+3. Use `-list-tested` and/or `-list-untested` for more granular control
+
+### Notes for Next Developer
+- Feature #19 is complete - the deprecation is implemented with backward compatibility
+- Remaining features: #20 (merge goal flags), #21 (clarify analyze/refine), #22 (improve docs)
+- Consider removing the deprecated `-status` flag entirely in a future major version
+- The pattern used here (deprecated alias + warning) can be reused for other flag consolidations

@@ -47,7 +47,8 @@ type Config struct {
 	BuildSystem      string
 	Verbose          bool
 	ShowVersion      bool
-	ListStatus       bool
+	ListAll          bool // List all features (tested and untested)
+	ListStatus       bool // Deprecated: Use ListAll instead
 	ListTested       bool
 	ListUntested     bool
 	GeneratePlan     bool

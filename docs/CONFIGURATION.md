@@ -108,6 +108,18 @@ enable_multi_agent: false
 | Verbose | `-verbose`, `-v` | `verbose` | `false` | Enable verbose output |
 | Config File | `-config` | N/A | (auto-discover) | Custom config file path |
 
+### Plan Display Options
+
+| Option | CLI Flag | Description |
+|--------|----------|-------------|
+| List All | `-list-all` | List all features (tested and untested) |
+| List Tested | `-list-tested` | List only tested features |
+| List Untested | `-list-untested` | List only untested features |
+| List Deferred | `-list-deferred` | List deferred features |
+| Status | `-status` | **DEPRECATED**: Use `-list-all` instead |
+
+> **Note:** The `-status` flag is deprecated and will show a warning. Use `-list-all` for the same functionality.
+
 ### Build Systems
 
 | Build System | Type Check Command | Test Command | Detection |

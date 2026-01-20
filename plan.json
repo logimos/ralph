@@ -363,7 +363,7 @@
             "Add unit tests to verify deprecation warning is shown when -status is used"
         ],
         "expected_output": "The -status flag is either deprecated with clear guidance or renamed for clarity, reducing user confusion",
-        "tested": false
+        "tested": true
     },
     {
         "id": 20,

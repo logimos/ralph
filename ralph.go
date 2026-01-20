@@ -51,7 +51,7 @@ func getFlagGroups() []flagGroup {
 		{
 			name:        "Plan Display",
 			description: "View and inspect plan status",
-			flags:       []string{"status", "list-tested", "list-untested", "list-deferred"},
+			flags:       []string{"list-all", "list-tested", "list-untested", "list-deferred"},
 		},
 		{
 			name:        "Plan Analysis & Refinement",
@@ -269,7 +269,7 @@ func main() {
 	}
 
 	// Handle list commands (don't require iterations)
-	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested || cfg.ListDeferred {
+	if cfg.ListAll || cfg.ListTested || cfg.ListUntested || cfg.ListDeferred {
 		if err := validateConfig(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -378,7 +378,8 @@ func parseFlags() *config.Config {
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose output")
 	flag.BoolVar(&cfg.Verbose, "v", false, "Enable verbose output (shorthand)")
 	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version information and exit")
-	flag.BoolVar(&cfg.ListStatus, "status", false, "List plan status (tested and untested features)")
+	flag.BoolVar(&cfg.ListAll, "list-all", false, "List all features (tested and untested)")
+	flag.BoolVar(&cfg.ListStatus, "status", false, "DEPRECATED: Use -list-all instead. List all features.")
 	flag.BoolVar(&cfg.ListTested, "list-tested", false, "List only tested features")
 	flag.BoolVar(&cfg.ListUntested, "list-untested", false, "List only untested features")
 	flag.BoolVar(&cfg.GeneratePlan, "generate-plan", false, "Generate plan.json from notes file")
@@ -643,7 +644,7 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5 -build-system gradle  # Use Gradle preset\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -config my-config.yaml           # Use specific config file\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -status                          # Show plan status\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -list-all                        # Show all features (tested and untested)\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-tested                     # List tested features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-untested                   # List untested features\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -milestones                      # Show milestone progress\n", os.Args[0])
@@ -683,6 +684,12 @@ func parseFlags() *config.Config {
 
 	// Apply build system configuration
 	detection.ApplyBuildSystemConfig(cfg)
+
+	// Handle deprecated -status flag
+	if cfg.ListStatus {
+		fmt.Fprintf(os.Stderr, "Warning: -status is deprecated. Use -list-all instead.\n")
+		cfg.ListAll = true
+	}
 
 	return cfg
 }
@@ -847,7 +854,7 @@ func validateConfig(cfg *config.Config) error {
 	}
 
 	// Skip iteration validation if we're just listing status or milestones
-	if cfg.ListStatus || cfg.ListTested || cfg.ListUntested || cfg.ListMilestones || cfg.ShowMilestone != "" || cfg.ListDeferred {
+	if cfg.ListAll || cfg.ListTested || cfg.ListUntested || cfg.ListMilestones || cfg.ShowMilestone != "" || cfg.ListDeferred {
 		if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
 			return fmt.Errorf("plan file not found: %s", cfg.PlanFile)
 		}
@@ -1403,8 +1410,8 @@ func listPlanStatus(cfg *config.Config) error {
 	}
 
 	// Determine what to show
-	showTested := cfg.ListStatus || cfg.ListTested
-	showUntested := cfg.ListStatus || cfg.ListUntested
+	showTested := cfg.ListAll || cfg.ListTested
+	showUntested := cfg.ListAll || cfg.ListUntested
 
 	if showTested {
 		fmt.Printf("=== Tested Features (from %s) ===\n", cfg.PlanFile)
