@@ -61,4 +61,41 @@ describe("runCli record + import integration", () => {
     const out = JSON.parse(r.stdout) as { imported: number; skipped: number };
     expect(out.imported).toBe(1);
   });
+
+  it("v1 retrieve returns contextBlock after record", () => {
+    dir = mkdtempSync(join(tmpdir(), "layers-cli-retrieve-"));
+    const rec = JSON.stringify({
+      projectRoot: dir,
+      entries: [
+        {
+          type: "decision",
+          content: "Use JWT for auth tokens",
+          category: "feature",
+          featureId: 2,
+          source: "agent",
+        },
+      ],
+    });
+    expect(runCli(["v1", "record"], {}, rec).code).toBe(0);
+
+    const retrieveStdin = JSON.stringify({
+      projectRoot: dir,
+      query: {
+        text: "authentication JWT",
+        category: "feature",
+        featureId: 2,
+      },
+      options: { topK: 5, maxTokens: 2000 },
+    });
+    const r = runCli(["v1", "retrieve"], {}, retrieveStdin);
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout) as {
+      contextBlock: string;
+      memories: unknown[];
+      meta: { ftsOnly: boolean };
+    };
+    expect(out.contextBlock).toContain("[MEMORY CONTEXT]");
+    expect(out.memories.length).toBeGreaterThan(0);
+    expect(out.meta.ftsOnly).toBe(true);
+  });
 });
