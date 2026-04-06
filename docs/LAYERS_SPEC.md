@@ -8,10 +8,13 @@ This document specifies **Layers**: a **TypeScript** application in this reposit
 
 | Source | Role |
 |--------|------|
+| `docs/layers/README.md` | **User guide**, **Ralph integration** how-to, index to other docs |
+| `docs/layers_spec_v2.md` | **Forward-looking** gaps and v2 themes (not normative for v1) |
+| `docs/RALPH_LAYERS_SPEC.md` | **Ralph orchestration** using Layers (smarter retrieve, snapshot in prompts) |
 | `oc-spec/spec.md` §8, `spec.algorithms.md` §10 | **OpenClaw** two-layer memory (session history + semantic index, hybrid search, FTS fallback) — **behavioral reference**, not a line-for-line port |
 | `oc-spec/spec.contracts.md` §6–7 | Transcript ordering, memory search result shapes — **inspiration** for JSON contracts |
-| `docs/RALPH_LOOP_ENHANCEMENTS.md` §6.5–7.12 | Ralph-specific analysis: `progress.txt` vs `.ralph-memory.json`, token pressure, split history vs context |
-| `internal/memory/memory.go` | **Current** Ralph memory: flat JSON, `BuildPromptContext`, `[REMEMBER:…]` extraction — **to be superseded or bridged** by Layers |
+| `docs/RALPH_LOOP_ENHANCEMENTS.md` §6.5–7.12, §6.6, §10 | Ralph loop analysis **updated for Layers**; token pressure; split history vs context |
+| `internal/memory/memory.go` | **Legacy** Ralph memory: flat JSON — **bridged** when Layers disabled or on record fallback |
 
 ---
 

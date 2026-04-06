@@ -2,6 +2,8 @@
 
 This document analyzes how the **Ralph iterative loop** works in this codebase, what it does well, where cost and fragility concentrate, how it interacts with **Cursor** (and other agent CLIs), and concrete directions to **optimize the loop** itself—rather than general product features.
 
+**Layers era:** The repo now ships **`layers/`** (TypeScript memory service) and optional **Ralph ↔ Layers** integration (`-layers-enabled`). Much of §6.5–7.12 described **aspirational** mitigations before that stack existed; §6.6 and §10 summarize **what is implemented**, **what is weak**, and **what to do next**. See also **`docs/RALPH_LAYERS_SPEC.md`** (Ralph orchestration using Layers) and **`docs/layers/`** (user docs).
+
 ---
 
 ## 1. What the Ralph loop is (in this repo)
@@ -32,6 +34,7 @@ So the loop is: **orchestrator (deterministic) → agent (non-deterministic) →
 | `internal/replan` | Triggers replanning (e.g. consecutive failures, plan file hash change); can invoke agent for replan strategies. |
 | `internal/scope` | Per-feature iteration budgets and deadlines; can mark plans deferred. |
 | `internal/memory`, `internal/nudge` | Injected text prepended to the prompt; nudges acknowledged to avoid repetition. |
+| `internal/layers`, `layers/` (optional) | When **`-layers-enabled`**: **retrieve** / **record** / **append-run** / **compact** via the Layers TS service; see **`docs/LAYERS_SPEC.md`**. |
 | `internal/milestone` | Derived progress from plan items tagged with milestones. |
 
 **Legacy parallel:** `ralph.sh` implements the same *idea* in bash (Claude CLI, `@plans/prd.json @progress.txt`, same completion token).
@@ -143,7 +146,7 @@ From Ralph’s perspective, each iteration is **stateless**: new process, new pr
 
 ## 6.5 Two-layer memory: OpenClaw (oc-spec) vs Ralph
 
-**Implementation direction:** Memory for Ralph is specified as the TypeScript app **`layers/`** with a versioned **Ralph ↔ Layers contract**. See **[`LAYERS_SPEC.md`](LAYERS_SPEC.md)** (phased plan, CLI/HTTP API, cross-references to oc-spec and current Ralph memory).
+**Implementation direction:** Memory for Ralph is specified as the TypeScript app **`layers/`** with a versioned **Ralph ↔ Layers contract**. See **[`LAYERS_SPEC.md`](LAYERS_SPEC.md)** (phased plan, CLI/HTTP API, cross-references to oc-spec and current Ralph memory). **User-facing docs:** [`docs/layers/README.md`](layers/README.md). **Gaps / v2 themes:** [`layers_spec_v2.md`](layers_spec_v2.md). **Ralph orchestration roadmap (smarter use of Layers):** [`RALPH_LAYERS_SPEC.md`](RALPH_LAYERS_SPEC.md).
 
 The `oc-spec/` folder documents **OpenClaw’s** persistent memory architecture. It is useful as a **reference pattern** for token-efficient continuity—not as something to copy line-for-line in Go, but as a **separation of concerns** Ralph can emulate.
 
@@ -194,6 +197,23 @@ Ralph iterations are **stateless subprocesses** (§6.3), so there is **no** tran
 
 - **Embedded FTS** over memory entries + progress summaries for **query = current feature description**.
 - **Compaction job**: after each iteration or every *n* steps, rewrite “working summary” via **rules** or **single** LLM call **only when** size exceeds threshold (OpenClaw’s preflight compaction analogue).
+
+### 6.6 Post-Layers: what landed vs what is still weak
+
+Phases **0–6** in **`LAYERS_SPEC.md`** are **implemented** for the Layers service and basic Ralph wiring. The table below maps **earlier pain points** to **current state** and **remaining work**.
+
+| Topic | Original issue (this doc) | Implemented? | Still weak / poorly implemented |
+|--------|---------------------------|--------------|----------------------------------|
+| Layer B retrieval | Flat memory, simple score | **Yes** — Layers FTS + MMR + optional embeddings; Ralph prepends **`contextBlock`** when **`-layers-enabled`** | Retrieve runs **once per iteration** at prompt build; no **re-query after failure**; query tied to first untested row — **priority mismatch** with prompt (§4.1) still matters |
+| Layer A history | Unbounded **`progress.txt`** | **Partial** — **`run.jsonl`** + **`compact` → `context-snapshot.md`** exist; Ralph **append-run** each iteration | **`progress.txt` still `@`-referenced in full**; snapshot **not auto-injected** into prompt — token killer **not fully removed** |
+| Hybrid / embeddings | N/A in old Ralph | **Yes** in Layers (optional OpenAI) | Extra **cost** if enabled; **Ollama** / other providers **not** in v1 Layers |
+| Chunking long memories | Mentioned as future | **Not** in v1 Layers | Long entries still single FTS row — see **`layers_spec_v2.md`** |
+| Verification gate | No deterministic test/typecheck gate | **Not** in Ralph loop | §7.2 still **open** — high leverage for correctness |
+| Multi-agent | Flag not in hot path | **Still true** | §7.6 unchanged |
+| Priority alignment | Prompt vs `extractCurrentFeatureFromPlans` | **Partially improved** for Layers retrieve (category + description from same plan row) | **Full** priority field + sort still **not** done (§7.1) |
+| Smarter orchestration | N/A | **Minimal** — retrieve/record/append/compact | **Policy-driven** use (re-retrieve on retry, record verify outcomes) — see **`RALPH_LAYERS_SPEC.md`** |
+
+**How to fix (directional):** Prefer **`RALPH_LAYERS_SPEC.md`** for Ralph-side behavior; **`layers_spec_v2.md`** for the TS service evolution; keep **§7** below for non-Layers loop work (verify gate, multi-agent, etc.).
 
 ---
 
@@ -281,6 +301,8 @@ The prompt asks for a **git commit per feature**. The loop does not verify commi
 
 **Why:** Preserves **auditability** (full history on disk) while **capping** what Cursor loads every iteration — same separation as OpenClaw’s **transcript + compaction** story.
 
+**Status (Layers era):** Layers **`compact`** + **`context-snapshot.md`** implement **bounded derived context** from **`run.jsonl`**. **Gap:** Ralph still does not switch **`@`** from **`progress.txt`** to that snapshot by default — **poorly integrated** for token savings until **`RALPH_LAYERS_SPEC.md`** items land.
+
 ### 7.11 Strengthen Layer B memory retrieval (OpenClaw Layer B pattern)
 
 - Pass **category from the current plan item** into `BuildPromptContext` instead of always using `""` in `runIterations` (so memories match **infra** vs **ui** work).
@@ -289,6 +311,8 @@ The prompt asks for a **git commit per feature**. The loop does not verify commi
 
 **Why:** Keeps **instruction text** in the prompt full-size while **facts** stay **small and relevant**.
 
+**Status (Layers era):** **Implemented in Layers** (FTS + boosts + MMR + optional embeddings). Ralph passes **category + feature id** into **retrieve** when **`-layers-enabled`**. **Gap:** Flat **`BuildPromptContext("", 10)`** still runs every iteration as **fallback baseline**; **no min-score threshold** exposed in Ralph flags; **chunking** still future (**`layers_spec_v2.md`**).
+
 ### 7.12 Structured progress lines for machine-safe compaction
 
 - Define a **one-line schema** (or JSON line in JSONL) per iteration: feature id, status, commit hash, short summary.
@@ -296,22 +320,43 @@ The prompt asks for a **git commit per feature**. The loop does not verify commi
 
 **Why:** Lets Ralph **truncate** or **rebuild** `progress-context` **without** guessing from prose — reducing reliance on extra LLM calls for compaction.
 
+**Status (Layers era):** **`append-run`** emits **structured JSONL** per iteration — **partial** fulfillment. **Gap:** No strict schema validation; **not** wired to auto-replace **`progress.txt`** in prompts; **human prose** in `progress.txt` remains **unstructured** for machine compaction.
+
 ---
 
 ## 8. Summary
 
-The Ralph loop is a **simple, robust pattern**: repeated **agent subprocess** calls with **file-backed state**. Its strengths are **transparency** and **composability** (memory, nudges, scope, replan). Its main weaknesses for optimization are **context growth** (especially **`progress.txt` via `@`**, which behaves like an **unbounded OpenClaw Layer A** fed whole into every turn), **soft verification** of completion, **priority semantics drift**, and **unstructured progress**. OpenClaw’s **two-layer** model (bounded **history + compaction** + **retrieved semantic memory**) maps cleanly onto Ralph as **split progress files + improved `.ralph-memory` retrieval** — shrinking **evidence**, not **task instructions**. The interaction with **Cursor** is entirely through the **CLI and `@` file references**, so **token-efficient prompts and artifacts** are the highest-leverage improvements to the loop itself.
+The Ralph loop is a **simple, robust pattern**: repeated **agent subprocess** calls with **file-backed state**. Its strengths are **transparency** and **composability** (memory, nudges, scope, replan). Its main weaknesses for optimization are **context growth** (especially **`progress.txt` via `@`**, which behaves like an **unbounded OpenClaw Layer A** fed whole into every turn), **soft verification** of completion, **priority semantics drift**, and **unstructured progress**.
+
+**With Layers:** The **semantic memory** and **run-log + compact** pieces of OpenClaw-style architecture are **addressed in `layers/`** and **partially wired** in Ralph. The **largest remaining gap** is **prompt assembly**: still **`@`** full **`progress.txt`** by default, and **bounded snapshot** (`context-snapshot.md`) is **not** the primary handoff file. **Smarter use of Layers** (re-retrieve on failure, inject snapshot, align priority) is specified in **`RALPH_LAYERS_SPEC.md`**.
+
+The interaction with **Cursor** is entirely through the **CLI and `@` file references**, so **token-efficient prompts and artifacts** remain the highest-leverage improvements to the loop itself.
 
 ---
 
 ## 9. Suggested implementation order (technical only)
 
-1. **Verify gate** (typecheck/test in Ralph) + structured capture of results.  
-2. **Split progress for context** (§7.10): `@` only **bounded** `progress-context` + archive full history — fastest token win for long loops.  
-3. **Memory retrieval** (§7.11): category-aware `BuildPromptContext` + dedup/MMR-lite + optional FTS.  
-4. **Priority field** + consistent feature selection + prompt alignment.  
-5. **Structured iteration lines** (§7.12) + plan projection / rolling summary automation.  
+**Updated for Layers era** — items already largely covered by **Layers + Phase 6** are noted.
+
+1. **Verify gate** (typecheck/test in Ralph) + structured capture of results — **still open** (§7.2).  
+2. **Split progress for context** (§7.10): `@` **bounded** context + archive full history — **Layers provides `compact` / snapshot**; **Ralph must switch `@` targets** — **highest remaining token win**.  
+3. **Memory retrieval** (§7.11) — **largely in Layers**; Ralph: expose/tune retrieve options; optional **remove redundant** flat context when Layers succeeds.  
+4. **Priority field** + consistent feature selection + prompt alignment — **still open** (§4.1, §7.1).  
+5. **Structured iteration lines** (§7.12) — **partial** via **`append-run`**; tighten schema + prompt.  
 6. **Replan trigger** tuning and incremental replan path.  
 7. **Multi-agent** integration or config cleanup.
 
 This ordering front-loads **deterministic correctness**, **context caps**, and **retrieval quality** before **parallelism** or heavier **LLM compaction** passes.
+
+---
+
+## 10. Layers-era roadmap (cross-doc index)
+
+| Track | Document | Focus |
+|-------|----------|--------|
+| **Layers TS service** | `docs/LAYERS_SPEC.md` (v1), `docs/layers_spec_v2.md` (gaps) | API, storage, embeddings, HTTP |
+| **Ralph + Layers behavior** | `docs/RALPH_LAYERS_SPEC.md` | Smarter retrieve/record, snapshot in prompt, policy |
+| **Operator docs** | `docs/layers/README.md`, `user-guide.md`, `ralph-integration.md` | How to run and configure |
+| **Loop-wide** | This document (§6.6, §7.x status) | Orchestrator, Cursor, cost, verification |
+
+**“Smarter choices” via Layers:** means using **retrieve** not only as a static preamble but as a **decision-time** tool (e.g. after failures, after replan, with different queries) and feeding **compact** output into **`@`** — specified in **`RALPH_LAYERS_SPEC.md` §3**.
