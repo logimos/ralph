@@ -38,6 +38,29 @@ export type ImportRalphResult = {
 /**
  * Import legacy entries; uses legacy_id = Ralph entry id for idempotent re-import.
  */
+function validateLegacyEntry(
+  e: RalphEntry,
+  index: number
+): { ok: true } | { ok: false; message: string } {
+  const id = e.id?.trim();
+  if (!id) {
+    return { ok: false, message: `entries[${index}]: missing id` };
+  }
+  if (typeof e.type !== "string" || !e.type.trim()) {
+    return { ok: false, message: `entries[${index}] id=${id}: missing or empty type` };
+  }
+  if (typeof e.content !== "string" || !e.content.trim()) {
+    return { ok: false, message: `entries[${index}] id=${id}: missing or empty content` };
+  }
+  if (typeof e.created_at !== "string" || !e.created_at.trim()) {
+    return { ok: false, message: `entries[${index}] id=${id}: missing or empty created_at` };
+  }
+  if (typeof e.updated_at !== "string" || !e.updated_at.trim()) {
+    return { ok: false, message: `entries[${index}] id=${id}: missing or empty updated_at` };
+  }
+  return { ok: true };
+}
+
 export function importRalphMemoryIntoDb(db: Database.Database, absPath: string): ImportRalphResult {
   const data = readRalphMemoryFile(absPath);
   const checkLegacy = db.prepare("SELECT 1 AS ok FROM memories WHERE legacy_id = ? LIMIT 1");
@@ -46,13 +69,15 @@ export function importRalphMemoryIntoDb(db: Database.Database, absPath: string):
   let skipped = 0;
   const errors: string[] = [];
 
-  for (const e of data.entries!) {
+  for (let i = 0; i < data.entries!.length; i++) {
+    const e = data.entries![i]!;
     try {
-      const legacyId = e.id?.trim();
-      if (!legacyId) {
-        errors.push("entry missing id");
+      const v = validateLegacyEntry(e, i);
+      if (!v.ok) {
+        errors.push(v.message);
         continue;
       }
+      const legacyId = e.id.trim();
       if (checkLegacy.get(legacyId) != null) {
         skipped++;
         continue;
@@ -69,7 +94,9 @@ export function importRalphMemoryIntoDb(db: Database.Database, absPath: string):
       });
       imported++;
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
+      const id = e.id?.trim() ?? "?";
+      const prefix = `entries[${i}] id=${id}`;
+      errors.push(`${prefix}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

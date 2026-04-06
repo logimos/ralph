@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import type { ImportRalphMemoryRequest, RecordRequest } from "../contracts/v1.js";
 import { importRalphMemoryIntoDb, resolveMemoryFilePath } from "../import/ralphMemory.js";
 import { getPackageVersion } from "../version.js";
-import { insertMemory } from "../store/insert.js";
+import { insertMemory, type InsertedMemory } from "../store/insert.js";
 import { openDatabase } from "../store/open.js";
-import { resolveDataDir } from "../store/paths.js";
+import { effectiveDataDirOverride, resolveDataDir } from "../store/paths.js";
 
 export type HealthResult = {
   ok: true;
@@ -50,28 +50,31 @@ export function runCli(
         return jsonErr("INVALID_REQUEST", "record: entries must be a non-empty array");
       }
       const root = resolve(req.projectRoot);
-      const dataDir = resolveDataDir(root, req.dataDir);
+      const dataDir = resolveDataDir(root, effectiveDataDirOverride(req.dataDir, env));
       const db = openDatabase(dataDir);
-      const inserted = [];
-      for (const e of req.entries) {
-        inserted.push(insertMemory(db, e));
+      const inserted: InsertedMemory[] = [];
+      try {
+        for (const e of req.entries) {
+          inserted.push(insertMemory(db, e));
+        }
+        const out = {
+          ok: true as const,
+          count: inserted.length,
+          inserted: inserted.map((m) => ({
+            id: m.id,
+            type: m.type,
+            content: m.content,
+            category: m.category,
+            featureId: m.featureId,
+            source: m.source,
+            createdAt: m.createdAt,
+            updatedAt: m.updatedAt,
+          })),
+        };
+        return { code: 0, stdout: `${JSON.stringify(out)}\n`, stderr: "" };
+      } finally {
+        db.close();
       }
-      db.close();
-      const out = {
-        ok: true as const,
-        count: inserted.length,
-        inserted: inserted.map((m) => ({
-          id: m.id,
-          type: m.type,
-          content: m.content,
-          category: m.category,
-          featureId: m.featureId,
-          source: m.source,
-          createdAt: m.createdAt,
-          updatedAt: m.updatedAt,
-        })),
-      };
-      return { code: 0, stdout: `${JSON.stringify(out)}\n`, stderr: "" };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return jsonErr("RECORD_FAILED", msg);
@@ -95,6 +98,14 @@ export function runCli(
         req = { projectRoot: rootEnv };
       }
 
+      if (typeof req.projectRoot !== "string" || !req.projectRoot.trim()) {
+        return jsonErr(
+          "INVALID_REQUEST",
+          "import-ralph-memory: projectRoot is required and must be a non-empty string"
+        );
+      }
+      req = { ...req, projectRoot: req.projectRoot.trim() };
+
       let memoryPath: string;
       if (argv[2]) {
         const p = argv[2].trim();
@@ -110,19 +121,21 @@ export function runCli(
       }
 
       const root = resolve(req.projectRoot);
-      const dataDir = resolveDataDir(root, req.dataDir);
+      const dataDir = resolveDataDir(root, effectiveDataDirOverride(req.dataDir, env));
       const db = openDatabase(dataDir);
-      const result = importRalphMemoryIntoDb(db, memoryPath);
-      db.close();
-
-      const out = {
-        ok: true as const,
-        path: memoryPath,
-        imported: result.imported,
-        skipped: result.skipped,
-        errors: result.errors,
-      };
-      return { code: 0, stdout: `${JSON.stringify(out)}\n`, stderr: "" };
+      try {
+        const result = importRalphMemoryIntoDb(db, memoryPath);
+        const out = {
+          ok: true as const,
+          path: memoryPath,
+          imported: result.imported,
+          skipped: result.skipped,
+          errors: result.errors,
+        };
+        return { code: 0, stdout: `${JSON.stringify(out)}\n`, stderr: "" };
+      } finally {
+        db.close();
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return jsonErr("IMPORT_FAILED", msg);

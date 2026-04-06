@@ -41,7 +41,7 @@ echo '{"projectRoot":"/abs/repo","entries":[{"type":"decision","content":"Use SQ
   | node layers/dist/cli/main.js v1 record
 ```
 
-Database: `<projectRoot>/.layers/memory.db` (override with `dataDir` in JSON).
+Database: `<projectRoot>/.layers/memory.db` unless overridden by `dataDir` in the JSON request or the **`LAYERS_DATA_DIR`** environment variable (see `docs/LAYERS_SPEC.md` §7.1).
 
 **Phase 1 — import** legacy Ralph memory (`.ralph-memory.json` from `internal/memory`):
 

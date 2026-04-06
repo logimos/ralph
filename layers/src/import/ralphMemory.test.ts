@@ -57,4 +57,31 @@ describe("importRalphMemory", () => {
 
     db.close();
   });
+
+  it("reports validation errors with entry index and id", () => {
+    dir = mkdtempSync(join(tmpdir(), "layers-ralph-bad-"));
+    const memPath = join(dir, ".ralph-memory.json");
+    writeFileSync(
+      memPath,
+      JSON.stringify({
+        entries: [
+          {
+            id: "bad1",
+            type: "",
+            content: "x",
+            created_at: "2025-01-01T00:00:00.000Z",
+            updated_at: "2025-01-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      "utf8"
+    );
+    const dbDir = join(dir, ".layers");
+    mkdirSync(dbDir, { recursive: true });
+    const db = openDatabase(dbDir);
+    const r = importRalphMemoryIntoDb(db, memPath);
+    expect(r.imported).toBe(0);
+    expect(r.errors.some((m) => m.includes("entries[0]") && m.includes("bad1"))).toBe(true);
+    db.close();
+  });
 });
