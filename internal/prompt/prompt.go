@@ -4,6 +4,7 @@ package prompt
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/logimos/ralph/internal/config"
 )
@@ -13,8 +14,11 @@ const (
 	CompleteSignal = "<promise>COMPLETE</promise>"
 )
 
-// BuildIterationPrompt builds the prompt for an iteration
-func BuildIterationPrompt(cfg *config.Config) string {
+// BuildIterationPrompt builds the prompt for an iteration.
+// If layersSnapshotPath is non-empty, it must be an absolute path to context-snapshot.md
+// (bounded Layers run log); it is included before the progress file so the agent loads
+// recent structured context first. Pass "" when Layers is disabled or the file is absent.
+func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string) string {
 	// Resolve absolute paths for the plan and progress files
 	planPath, err := filepath.Abs(cfg.PlanFile)
 	if err != nil {
@@ -28,12 +32,19 @@ func BuildIterationPrompt(cfg *config.Config) string {
 
 	// Build the prompt string as a single line (matching bash script behavior)
 	// The bash script uses backslash continuation, which results in a single-line string
-	prompt := fmt.Sprintf("@%s @%s ", planPath, progressPath)
+	var prompt string
+	if strings.TrimSpace(layersSnapshotPath) != "" {
+		snap := layersSnapshotPath
+		prompt = fmt.Sprintf("@%s @%s @%s ", planPath, snap, progressPath)
+		prompt += "The second @ file is a bounded recent run snapshot (Layers compact output); prefer it for iteration context over reading the full progress file. "
+	} else {
+		prompt = fmt.Sprintf("@%s @%s ", planPath, progressPath)
+	}
 	prompt += "1. Find the highest-priority feature to work on and work only on that feature. "
 	prompt += "This should be the one YOU decide has the highest priority - not necessarily the first in the list. "
 	prompt += fmt.Sprintf("2. Check that the types check via %s and that the tests pass via %s. ", cfg.TypeCheckCmd, cfg.TestCmd)
 	prompt += "3. Update the PRD with the work that was done. "
-	prompt += "4. Append your progress to the progress.txt file. "
+	prompt += "4. Append your progress to the progress file (last @ path above). "
 	prompt += "Use this to leave a note for the next person working in the codebase. "
 	prompt += "5. Make a git commit of that feature. "
 	prompt += "ONLY WORK ON A SINGLE FEATURE. "

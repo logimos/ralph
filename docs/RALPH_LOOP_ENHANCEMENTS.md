@@ -205,7 +205,7 @@ Phases **0–6** in **`LAYERS_SPEC.md`** are **implemented** for the Layers serv
 | Topic | Original issue (this doc) | Implemented? | Still weak / poorly implemented |
 |--------|---------------------------|--------------|----------------------------------|
 | Layer B retrieval | Flat memory, simple score | **Yes** — Layers FTS + MMR + optional embeddings; Ralph prepends **`contextBlock`** when **`-layers-enabled`** | Retrieve runs **once per iteration** at prompt build; no **re-query after failure**; query tied to first untested row — **priority mismatch** with prompt (§4.1) still matters |
-| Layer A history | Unbounded **`progress.txt`** | **Partial** — **`run.jsonl`** + **`compact` → `context-snapshot.md`** exist; Ralph **append-run** each iteration | **`progress.txt` still `@`-referenced in full**; snapshot **not auto-injected** into prompt — token killer **not fully removed** |
+| Layer A history | Unbounded **`progress.txt`** | **Partial** — **`run.jsonl`** + **`compact` → `context-snapshot.md`**; Ralph **append-run** each iteration; **`@`** includes **bounded snapshot** when Layers enabled (plan → snapshot → progress) | **`progress.txt` still `@`-referenced** (archive); **full file** still loads in Cursor — **C2** / omit-progress work remains |
 | Hybrid / embeddings | N/A in old Ralph | **Yes** in Layers (optional OpenAI) | Extra **cost** if enabled; **Ollama** / other providers **not** in v1 Layers |
 | Chunking long memories | Mentioned as future | **Not** in v1 Layers | Long entries still single FTS row — see **`layers_spec_v2.md`** |
 | Verification gate | No deterministic test/typecheck gate | **Not** in Ralph loop | §7.2 still **open** — high leverage for correctness |
@@ -303,7 +303,7 @@ The prompt asks for a **git commit per feature**. The loop does not verify commi
 
 **Why:** Preserves **auditability** (full history on disk) while **capping** what Cursor loads every iteration — same separation as OpenClaw’s **transcript + compaction** story.
 
-**Status (Layers era):** Layers **`compact`** + **`context-snapshot.md`** implement **bounded derived context** from **`run.jsonl`**. **Gap:** Ralph still does not switch **`@`** from **`progress.txt`** to that snapshot by default — **poorly integrated** for token savings until **`RALPH_LAYERS_SPEC.md`** items land.
+**Status (Layers era):** Layers **`compact`** + **`context-snapshot.md`** implement **bounded derived context** from **`run.jsonl`**. Ralph **prepends** **`@`** to the snapshot (when non-empty) **before** **`progress.txt`** when **`-layers-enabled`**. **Gap:** **`progress.txt`** is still attached — largest token win is **omitting** or **tail-only** progress (`RALPH_ROADMAP.md` **C2**).
 
 ### 7.11 Strengthen Layer B memory retrieval (OpenClaw Layer B pattern)
 
@@ -330,7 +330,7 @@ The prompt asks for a **git commit per feature**. The loop does not verify commi
 
 The Ralph loop is a **simple, robust pattern**: repeated **agent subprocess** calls with **file-backed state**. Its strengths are **transparency** and **composability** (memory, nudges, scope, replan). Its main weaknesses for optimization are **context growth** (especially **`progress.txt` via `@`**, which behaves like an **unbounded OpenClaw Layer A** fed whole into every turn), **soft verification** of completion, **priority semantics drift**, and **unstructured progress**.
 
-**With Layers:** The **semantic memory** and **run-log + compact** pieces of OpenClaw-style architecture are **addressed in `layers/`** and **partially wired** in Ralph. The **largest remaining gap** is **prompt assembly**: still **`@`** full **`progress.txt`** by default, and **bounded snapshot** (`context-snapshot.md`) is **not** the primary handoff file. **Smarter use of Layers** (re-retrieve on failure, inject snapshot, align priority) is specified in **`RALPH_LAYERS_SPEC.md`**.
+**With Layers:** The **semantic memory** and **run-log + compact** pieces of OpenClaw-style architecture are **addressed in `layers/`** and **wired** in Ralph (retrieve, snapshot **`@`**, record, append-run). The **largest remaining gap** for token cost is often still **`@`** **full** **`progress.txt`** alongside the snapshot — **C2** / bounded **`progress-context`** in **`RALPH_ROADMAP.md`**. **Smarter use of Layers** (re-retrieve on failure, align priority) is specified in **`RALPH_LAYERS_SPEC.md`**.
 
 The interaction with **Cursor** is entirely through the **CLI and `@` file references**, so **token-efficient prompts and artifacts** remain the highest-leverage improvements to the loop itself.
 
@@ -341,7 +341,7 @@ The interaction with **Cursor** is entirely through the **CLI and `@` file refer
 **Updated for Layers era** — items already largely covered by **Layers + Phase 6** are noted.
 
 1. **Verify gate** (typecheck/test in Ralph) + structured capture of results — **still open** (§7.2).  
-2. **Split progress for context** (§7.10): `@` **bounded** context + archive full history — **Layers provides `compact` / snapshot**; **Ralph must switch `@` targets** — **highest remaining token win**.  
+2. **Split progress for context** (§7.10): `@` **bounded** context + archive full history — **Layers `compact` / snapshot** is **`@`**-included when enabled; **highest remaining token win** is **not** attaching unbounded **`progress.txt`** (see **C2**).  
 3. **Memory retrieval** (§7.11) — **largely in Layers**; Ralph: expose/tune retrieve options; optional **remove redundant** flat context when Layers succeeds.  
 4. **Priority field** + consistent feature selection + prompt alignment — **still open** (§4.1, §7.1).  
 5. **Structured iteration lines** (§7.12) — **partial** via **`append-run`**; tighten schema + prompt.  

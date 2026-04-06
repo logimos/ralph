@@ -26,7 +26,7 @@
 |----|------|--------|------------|
 | T1 | **`-multi-agent`** does not change `runIterations` | **Done** (this branch) | `validateConfig` returns a clear error if `-multi-agent` is set with `-iterations` > 0; help text says **not wired**; `-list-agents` still works |
 | T2 | **Help / examples** do not imply multi-agent runs parallel agents in the loop | **Done** | `flag.Usage` and examples updated |
-| T3 | **Layers** vs **`progress.txt`**: document that full **`@progress`** remains unless/until bounded-context work lands | **Done** | Pointer in this doc + **`docs/layers/ralph-integration.md`** |
+| T3 | **Layers** vs **`progress.txt`**: document prompt behavior when bounded context is available | **Done** | **`docs/layers/ralph-integration.md`** |
 
 ### 2. Align “current feature” and prompt (priority mismatch)
 
@@ -39,7 +39,7 @@
 
 | ID | Item | Status | Notes |
 |----|------|--------|--------|
-| C1 | Prefer **`@`** bounded file (`context-snapshot.md` or generated tail) when Layers enabled | Next | **`RALPH_LAYERS_SPEC.md` §3.1** |
+| C1 | Prefer **`@`** bounded file (`context-snapshot.md` or generated tail) when Layers enabled | **Done** | **`compact`** before each prompt when **`-layers-enabled`**; **`@`** order is plan → snapshot (if non-empty) → **`progress.txt`**; see **`RALPH_LAYERS_SPEC.md` §3.1** |
 | C2 | Optional **`progress-context.txt`** maintained by Ralph | Backlog | Rule-based tail or compact step |
 
 ### 4. Verification
@@ -66,4 +66,5 @@
 
 ## Revision
 
-**v0.1** — Initial roadmap; **T1–T3** implemented on branch `cursor/ralph-roadmap-honesty`.
+**v0.1** — Initial roadmap; **T1–T3** implemented on branch `cursor/ralph-roadmap-honesty`.  
+**v0.2** — **C1**: **`context-snapshot.md`** included in iteration **`@`** when Layers is enabled and the snapshot file exists (non-empty).

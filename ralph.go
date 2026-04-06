@@ -955,8 +955,32 @@ func runIterations(cfg *config.Config) error {
 		// Capture active nudges before this iteration
 		activeNudges := nudgeStore.GetActive()
 
+		// Refresh Layers snapshot so @ context-snapshot.md exists before building the prompt (bounded run context).
+		layersSnapshotPath := ""
+		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
+			creq := layers.CompactRequest{ProjectRoot: layersProjectRoot}
+			if cfg.LayersDataDir != "" {
+				creq.DataDir = cfg.LayersDataDir
+			}
+			cctx, ccancel := layersOpContext(context.Background())
+			cerr := layersClient.Compact(cctx, creq)
+			ccancel()
+			if cerr != nil && cfg.Verbose {
+				output.Debug("Layers compact (before prompt): %v", cerr)
+			}
+			snapPath, serr := layers.ContextSnapshotPath(layersProjectRoot, cfg.LayersDataDir)
+			if serr == nil {
+				if st, statErr := os.Stat(snapPath); statErr == nil && st.Size() > 0 {
+					layersSnapshotPath = snapPath
+					if cfg.Verbose {
+						output.Debug("Layers: including bounded snapshot in prompt: %s", snapPath)
+					}
+				}
+			}
+		}
+
 		// Build the prompt for the AI agent, including any recovery guidance
-		iterPrompt := prompt.BuildIterationPrompt(cfg)
+		iterPrompt := prompt.BuildIterationPrompt(cfg, layersSnapshotPath)
 
 		// Inject memory context: Layers retrieve when enabled, else flat JSON store
 		memoryContext := memStore.BuildPromptContext("", 10)
