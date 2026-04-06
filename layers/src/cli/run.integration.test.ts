@@ -12,7 +12,7 @@ describe("runCli record + import integration", () => {
     }
   });
 
-  it("v1 record writes sqlite under .layers", () => {
+  it("v1 record writes sqlite under .layers", async () => {
     dir = mkdtempSync(join(tmpdir(), "layers-cli-"));
     const stdin = JSON.stringify({
       projectRoot: dir,
@@ -26,7 +26,7 @@ describe("runCli record + import integration", () => {
         },
       ],
     });
-    const r = runCli(["v1", "record"], {}, stdin);
+    const r = await runCli(["v1", "record"], {}, stdin);
     expect(r.code).toBe(0);
     const out = JSON.parse(r.stdout) as { ok: boolean; count: number };
     expect(out.ok).toBe(true);
@@ -36,7 +36,7 @@ describe("runCli record + import integration", () => {
     expect(existsSync(dbFile)).toBe(true);
   });
 
-  it("v1 import-ralph-memory with stdin", () => {
+  it("v1 import-ralph-memory with stdin", async () => {
     dir = mkdtempSync(join(tmpdir(), "layers-cli-"));
     mkdirSync(join(dir, ".layers"), { recursive: true });
     writeFileSync(
@@ -56,13 +56,13 @@ describe("runCli record + import integration", () => {
     );
 
     const stdin = JSON.stringify({ projectRoot: dir });
-    const r = runCli(["v1", "import-ralph-memory"], {}, stdin);
+    const r = await runCli(["v1", "import-ralph-memory"], {}, stdin);
     expect(r.code).toBe(0);
     const out = JSON.parse(r.stdout) as { imported: number; skipped: number };
     expect(out.imported).toBe(1);
   });
 
-  it("v1 retrieve returns contextBlock after record", () => {
+  it("v1 retrieve returns contextBlock after record", async () => {
     dir = mkdtempSync(join(tmpdir(), "layers-cli-retrieve-"));
     const rec = JSON.stringify({
       projectRoot: dir,
@@ -76,7 +76,7 @@ describe("runCli record + import integration", () => {
         },
       ],
     });
-    expect(runCli(["v1", "record"], {}, rec).code).toBe(0);
+    expect((await runCli(["v1", "record"], {}, rec)).code).toBe(0);
 
     const retrieveStdin = JSON.stringify({
       projectRoot: dir,
@@ -87,7 +87,7 @@ describe("runCli record + import integration", () => {
       },
       options: { topK: 5, maxTokens: 2000 },
     });
-    const r = runCli(["v1", "retrieve"], {}, retrieveStdin);
+    const r = await runCli(["v1", "retrieve"], {}, retrieveStdin);
     expect(r.code).toBe(0);
     const out = JSON.parse(r.stdout) as {
       contextBlock: string;
@@ -99,7 +99,7 @@ describe("runCli record + import integration", () => {
     expect(out.meta.ftsOnly).toBe(true);
   });
 
-  it("v1 append-run then v1 compact writes context-snapshot.md", () => {
+  it("v1 append-run then v1 compact writes context-snapshot.md", async () => {
     dir = mkdtempSync(join(tmpdir(), "layers-cli-phase3-"));
     const ev = JSON.stringify({
       projectRoot: dir,
@@ -111,7 +111,7 @@ describe("runCli record + import integration", () => {
         payload: { status: "ok" },
       },
     });
-    const a = runCli(["v1", "append-run"], {}, ev);
+    const a = await runCli(["v1", "append-run"], {}, ev);
     expect(a.code).toBe(0);
     const appendOut = JSON.parse(a.stdout) as { path: string };
     expect(existsSync(appendOut.path)).toBe(true);
@@ -121,7 +121,7 @@ describe("runCli record + import integration", () => {
       maxEvents: 10,
       maxBytes: 50_000,
     });
-    const c = runCli(["v1", "compact"], {}, compactStdin);
+    const c = await runCli(["v1", "compact"], {}, compactStdin);
     expect(c.code).toBe(0);
     const compactOut = JSON.parse(c.stdout) as {
       snapshotPath: string;

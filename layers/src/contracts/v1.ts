@@ -58,6 +58,8 @@ export type RetrieveRequest = {
     maxTokens?: number;
     mmrLambda?: number;
     embeddingFallbackOk?: boolean;
+    vectorWeight?: number;
+    textWeight?: number;
   };
 };
 
@@ -73,6 +75,7 @@ export type RetrieveResponse = {
   meta: {
     ftsOnly: boolean;
     truncated: boolean;
+    embeddingModel?: string;
   };
 };
 

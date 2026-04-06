@@ -60,7 +60,9 @@ echo '{"projectRoot":"/abs/repo","query":{"text":"auth JWT","category":"feature"
   | node layers/dist/cli/main.js v1 retrieve
 ```
 
-Response includes `contextBlock` (Ralph-ready delimiters) and `memories` with scores. Embeddings are **not** used yet (`meta.ftsOnly` is always true until Phase 4).
+Response includes `contextBlock`, `memories`, and `meta` (`ftsOnly`, `truncated`, optional `embeddingModel`).
+
+**Hybrid embeddings (Phase 4):** set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`**. Without a key, retrieval is **FTS-only** (`meta.ftsOnly: true`). Optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`). **`LAYERS_EMBEDDING_TIMEOUT_MS`** caps embed HTTP calls (default 60000). Tune blend with `options.vectorWeight` / `options.textWeight` (defaults 0.55 / 0.45).
 
 **Phase 3 — run log + snapshot** (Layer A, §3.3 / §7):
 
@@ -86,7 +88,8 @@ Default snapshot path: `<projectRoot>/.layers/context-snapshot.md`. Override wit
 - **Phase 1**: SQLite + FTS5, `v1 record`, `v1 import-ralph-memory` (idempotent).
 - **Phase 2**: `v1 retrieve` — FTS ranking, category/feature boosts, MMR-lite, `contextBlock` + token budget.
 - **Phase 3**: `v1 append-run`, `v1 compact` — JSONL run log + markdown snapshot.
-- **Next**: Phase 4 — embeddings (`docs/LAYERS_SPEC.md`).
+- **Phase 4**: optional OpenAI embeddings + hybrid retrieve; lazy embedding cache in SQLite.
+- **Next**: Phase 5 — HTTP server (`docs/LAYERS_SPEC.md`).
 
 ## Quick links
 

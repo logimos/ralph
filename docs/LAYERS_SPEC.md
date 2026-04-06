@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 3 (`v1 append-run`, `v1 compact`) in **`layers` v0.4.x** (see §10). Run log defaults to **`<dataDir>/run.jsonl`**; snapshot defaults to **`<dataDir>/context-snapshot.md`**. Paths **`runLog` / `snapshot`** are resolved **inside the data directory** only (relative paths are joined; absolute paths must still lie under `dataDir` — no `..` escape). Large `run.jsonl` files use **tail reads** so compaction does not load the whole file when it exceeds ~2 MiB.
+**Revision:** Phase 4 (optional **OpenAI embeddings** + hybrid retrieve) in **`layers` v0.5.x** (see §10). Set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`** for hybrid search; optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`) and **`LAYERS_EMBEDDING_TIMEOUT_MS`** (default 60000). Without a key, **`v1 retrieve`** stays **FTS-only** (`meta.ftsOnly: true`). Embeddings are stored as **Float32 BLOB** on `memories.embedding` and filled lazily on retrieve; invalid-length blobs are treated as missing.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -177,6 +177,9 @@ Environment:
 
 - `LAYERS_PROJECT_ROOT` — required for CLI default cwd resolution.
 - `LAYERS_DATA_DIR` — default `.layers` under project root.
+- `LAYERS_OPENAI_API_KEY` or `OPENAI_API_KEY` — enables hybrid retrieval embeddings.
+- `LAYERS_EMBEDDING_MODEL` — OpenAI embedding model id (optional).
+- `LAYERS_EMBEDDING_TIMEOUT_MS` — embed request timeout in ms (default **60000**, max **600000**).
 
 ### 7.2 CLI commands (normative v1 sketch)
 
@@ -205,10 +208,14 @@ Environment:
     "topK": 10,
     "maxTokens": 2000,
     "mmrLambda": 0.5,
-    "embeddingFallbackOk": true
+    "embeddingFallbackOk": true,
+    "vectorWeight": 0.55,
+    "textWeight": 0.45
   }
 }
 ```
+
+When embeddings are available, scores blend **cosine(query, row)** (normalized to [0,1]) with **FTS relevance** using `vectorWeight` / `textWeight` (default 0.55 / 0.45). If the API fails and `embeddingFallbackOk` is true (default), **FTS-only** is used.
 
 **RetrieveResponse**
 
@@ -218,7 +225,8 @@ Environment:
   "memories": [{ "id": "uuid", "type": "decision", "content": "string", "score": 0.0 }],
   "meta": {
     "ftsOnly": false,
-    "truncated": false
+    "truncated": false,
+    "embeddingModel": "text-embedding-3-small"
   }
 }
 ```
@@ -297,7 +305,8 @@ layers/
   src/
     cli/
     server/          # optional HTTP
-    index/           # SQLite + FTS + optional vectors
+    index/           # SQLite + FTS
+    embed/           # OpenAI embeddings (optional)
     retrieve/        # hybrid + MMR
     run/             # JSONL append + compact snapshot
     import/          # .ralph-memory.json
@@ -350,8 +359,9 @@ docs/
 
 ### Phase 4 — Embeddings (optional provider)
 
-- [ ] Pluggable embedder interface; local or API key from env.
-- [ ] Hybrid merge + **embeddingFallbackOk** behavior.
+- [x] **OpenAI** embedder via `fetch` (`layers/src/embed/openai.ts`); `LAYERS_OPENAI_API_KEY` / `OPENAI_API_KEY`; model via `LAYERS_EMBEDDING_MODEL`.
+- [x] **`memories.embedding`** BLOB (Float32); lazy compute + persist on retrieve; hybrid **vector + FTS** with `vectorWeight` / `textWeight`; **`embeddingFallbackOk`** (default true) → FTS on API failure.
+- [x] **`meta.embeddingModel`** / **`meta.ftsOnly`** in retrieve response; **`v1 retrieve`** is async (uses `fetch`).
 
 ### Phase 5 — HTTP server (optional)
 

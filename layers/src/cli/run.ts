@@ -12,6 +12,7 @@ import { getPackageVersion } from "../version.js";
 import { insertMemory, type InsertedMemory } from "../store/insert.js";
 import { openDatabase } from "../store/open.js";
 import { effectiveDataDirOverride, resolveDataDir } from "../store/paths.js";
+import { createOpenAiEmbedder } from "../embed/openai.js";
 import { retrieveMemories } from "../retrieve/retrieve.js";
 import { appendRunEvent, validateRunEvent } from "../run/append.js";
 import { normalizeCompactOptions, readLastJsonlLines, writeSnapshot } from "../run/compact.js";
@@ -40,11 +41,11 @@ function parseStdinJson<T>(raw: string): T {
   return JSON.parse(trimmed) as T;
 }
 
-export function runCli(
+export async function runCli(
   argv: string[],
   env: NodeJS.ProcessEnv,
   stdin: string
-): { code: number; stdout: string; stderr: string } {
+): Promise<{ code: number; stdout: string; stderr: string }> {
   if (argv[0] === "v1" && argv[1] === "health") {
     const body: HealthResult = {
       ok: true,
@@ -117,7 +118,9 @@ export function runCli(
       const db = openDatabase(dataDir);
       try {
         const q = req.query;
-        const { memories, contextBlock, meta } = retrieveMemories(
+        const embedder = createOpenAiEmbedder(env);
+        const embeddingCtx = embedder ? { embedder } : null;
+        const { memories, contextBlock, meta } = await retrieveMemories(
           db,
           {
             text: q.text,
@@ -128,7 +131,11 @@ export function runCli(
             topK: req.options?.topK,
             maxTokens: req.options?.maxTokens,
             mmrLambda: req.options?.mmrLambda,
-          }
+            embeddingFallbackOk: req.options?.embeddingFallbackOk,
+            vectorWeight: req.options?.vectorWeight,
+            textWeight: req.options?.textWeight,
+          },
+          embeddingCtx
         );
         const out = {
           ok: true as const,

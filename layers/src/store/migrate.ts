@@ -1,9 +1,14 @@
 import type Database from "better-sqlite3";
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
+
+function tableHasColumn(db: Database.Database, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((r) => r.name === column);
+}
 
 export function migrate(db: Database.Database): void {
-  const v = db.pragma("user_version", { simple: true }) as number;
+  let v = db.pragma("user_version", { simple: true }) as number;
   if (v >= CURRENT_VERSION) {
     return;
   }
@@ -41,6 +46,13 @@ export function migrate(db: Database.Database): void {
         DELETE FROM memory_fts WHERE memory_id = old.id;
       END;
     `);
+    v = 1;
+  }
+  if (v === 1) {
+    if (!tableHasColumn(db, "memories", "embedding")) {
+      db.exec(`ALTER TABLE memories ADD COLUMN embedding BLOB;`);
+    }
+    v = 2;
   }
   db.pragma(`user_version = ${CURRENT_VERSION}`);
 }
