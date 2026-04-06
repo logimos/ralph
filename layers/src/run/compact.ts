@@ -1,4 +1,12 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 
 export type CompactOptions = {
@@ -8,6 +16,8 @@ export type CompactOptions = {
 
 const DEFAULT_MAX_EVENTS = 50;
 const DEFAULT_MAX_BYTES = 32_000;
+/** Read whole file when small enough; else tail-read in expanding windows. */
+const MAX_FULL_READ_BYTES = 2 * 1024 * 1024;
 
 export function normalizeCompactOptions(maxEvents?: number, maxBytes?: number): CompactOptions {
   let me = DEFAULT_MAX_EVENTS;
@@ -21,13 +31,25 @@ export function normalizeCompactOptions(maxEvents?: number, maxBytes?: number): 
   return { maxEvents: me, maxBytes: mb };
 }
 
+function tailFromString(raw: string, maxLines: number): string[] {
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length <= maxLines) {
+    return lines;
+  }
+  return lines.slice(-maxLines);
+}
+
 /**
- * Read last N non-empty lines from a JSONL file (MVP: full read).
+ * Last N non-empty lines. Large files: read only a tail window (expanding until
+ * enough lines or whole file), avoiding loading multi‑GB logs into memory.
  */
 export function readLastJsonlLines(absPath: string, maxLines: number): string[] {
-  let raw: string;
+  if (maxLines <= 0) {
+    return [];
+  }
+  let st;
   try {
-    raw = readFileSync(absPath, "utf8");
+    st = statSync(absPath);
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
     if (err.code === "ENOENT") {
@@ -35,11 +57,42 @@ export function readLastJsonlLines(absPath: string, maxLines: number): string[] 
     }
     throw e;
   }
-  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length <= maxLines) {
-    return lines;
+  const size = st.size;
+  if (size === 0) {
+    return [];
   }
-  return lines.slice(-maxLines);
+
+  if (size <= MAX_FULL_READ_BYTES) {
+    return tailFromString(readFileSync(absPath, "utf8"), maxLines);
+  }
+
+  let tailLen = Math.min(size, MAX_FULL_READ_BYTES);
+  while (tailLen <= size) {
+    const start = size - tailLen;
+    const buf = Buffer.allocUnsafe(tailLen);
+    const fd = openSync(absPath, "r");
+    let bytesRead = 0;
+    try {
+      bytesRead = readSync(fd, buf, 0, tailLen, start);
+    } finally {
+      closeSync(fd);
+    }
+    let chunk = buf.subarray(0, bytesRead).toString("utf8");
+    if (start > 0) {
+      const firstNl = chunk.indexOf("\n");
+      if (firstNl === -1) {
+        tailLen = Math.min(size, tailLen * 2);
+        continue;
+      }
+      chunk = chunk.slice(firstNl + 1);
+    }
+    const lines = chunk.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (lines.length >= maxLines || start === 0) {
+      return lines.slice(-maxLines);
+    }
+    tailLen = Math.min(size, tailLen * 2);
+  }
+  return tailFromString(readFileSync(absPath, "utf8"), maxLines);
 }
 
 const TRUNC_MARKER = "\n\n… _(truncated to maxBytes)_\n";

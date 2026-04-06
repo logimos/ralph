@@ -22,6 +22,27 @@ describe("validateRunEvent", () => {
       validateRunEvent({ sessionKey: "x", kind: "nope", ts: new Date().toISOString() })
     ).toThrow();
   });
+
+  it("coerces string iteration and featureId", () => {
+    const e = validateRunEvent({
+      sessionKey: "s",
+      kind: "note",
+      iteration: "3",
+      featureId: "12",
+    });
+    expect(e.iteration).toBe(3);
+    expect(e.featureId).toBe(12);
+  });
+
+  it("throws on invalid iteration type", () => {
+    expect(() =>
+      validateRunEvent({
+        sessionKey: "s",
+        kind: "note",
+        iteration: 3.5,
+      })
+    ).toThrow(/iteration/);
+  });
 });
 
 describe("appendRunEvent", () => {

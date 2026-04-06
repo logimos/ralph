@@ -30,6 +30,16 @@ describe("readLastJsonlLines", () => {
     expect(readLastJsonlLines(join(d, "nope.jsonl"), 5)).toEqual([]);
     rmSync(d, { recursive: true, force: true });
   });
+
+  it("tail-reads large file without loading full string at once", () => {
+    dir = mkdtempSync(join(tmpdir(), "layers-big-jsonl-"));
+    const p = join(dir, "big.jsonl");
+    const line = '{"n":' + "x".repeat(400_000) + "}\n";
+    writeFileSync(p, line.repeat(6), "utf8");
+    const lines = readLastJsonlLines(p, 2);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('"n":');
+  });
 });
 
 describe("buildSnapshotContent", () => {

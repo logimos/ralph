@@ -18,7 +18,7 @@ import { normalizeCompactOptions, readLastJsonlLines, writeSnapshot } from "../r
 import {
   DEFAULT_RUN_LOG_REL,
   DEFAULT_SNAPSHOT_REL,
-  resolveUnderDataDir,
+  resolvePathInDataDir,
 } from "../run/resolvePaths.js";
 
 export type HealthResult = {
@@ -65,7 +65,7 @@ export function runCli(
       }
       const root = resolve(req.projectRoot.trim());
       const dataDir = resolveDataDir(root, effectiveDataDirOverride(req.dataDir, env));
-      const logPath = resolveUnderDataDir(dataDir, req.runLog, DEFAULT_RUN_LOG_REL);
+      const logPath = resolvePathInDataDir(dataDir, req.runLog, DEFAULT_RUN_LOG_REL);
       const event = validateRunEvent(req.event);
       appendRunEvent(logPath, event);
       const out = { ok: true as const, path: logPath };
@@ -84,8 +84,8 @@ export function runCli(
       }
       const root = resolve(req.projectRoot.trim());
       const dataDir = resolveDataDir(root, effectiveDataDirOverride(req.dataDir, env));
-      const runLogPath = resolveUnderDataDir(dataDir, req.runLog, DEFAULT_RUN_LOG_REL);
-      const snapshotPath = resolveUnderDataDir(dataDir, req.snapshot, DEFAULT_SNAPSHOT_REL);
+      const runLogPath = resolvePathInDataDir(dataDir, req.runLog, DEFAULT_RUN_LOG_REL);
+      const snapshotPath = resolvePathInDataDir(dataDir, req.snapshot, DEFAULT_SNAPSHOT_REL);
       const opts = normalizeCompactOptions(req.maxEvents, req.maxBytes);
       const lines = readLastJsonlLines(runLogPath, opts.maxEvents);
       const bytesWritten = writeSnapshot(snapshotPath, lines, opts);

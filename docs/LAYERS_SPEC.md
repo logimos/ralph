@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 3 (`v1 append-run`, `v1 compact`) in **`layers` v0.4.x** (see §10). Run log defaults to **`<dataDir>/run.jsonl`**; snapshot defaults to **`<dataDir>/context-snapshot.md`** (override with `runLog` / `snapshot` paths, absolute or relative to data dir).
+**Revision:** Phase 3 (`v1 append-run`, `v1 compact`) in **`layers` v0.4.x** (see §10). Run log defaults to **`<dataDir>/run.jsonl`**; snapshot defaults to **`<dataDir>/context-snapshot.md`**. Paths **`runLog` / `snapshot`** are resolved **inside the data directory** only (relative paths are joined; absolute paths must still lie under `dataDir` — no `..` escape). Large `run.jsonl` files use **tail reads** so compaction does not load the whole file when it exceeds ~2 MiB.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 

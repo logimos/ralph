@@ -3,6 +3,31 @@ import { dirname } from "node:path";
 import type { RunEvent } from "./types.js";
 import { RUN_KINDS } from "./types.js";
 
+function parseOptionalIntField(o: Record<string, unknown>, key: string): number | undefined {
+  if (!(key in o) || o[key] === undefined || o[key] === null) {
+    return undefined;
+  }
+  const v = o[key];
+  if (typeof v === "number") {
+    if (!Number.isFinite(v) || !Number.isInteger(v)) {
+      throw new Error(`event.${key} must be a finite integer`);
+    }
+    return v;
+  }
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (t === "") {
+      throw new Error(`event.${key} cannot be an empty string`);
+    }
+    const n = Number(t);
+    if (!Number.isFinite(n) || !Number.isInteger(n)) {
+      throw new Error(`event.${key} must be an integer (got ${JSON.stringify(v)})`);
+    }
+    return n;
+  }
+  throw new Error(`event.${key} must be a number or integer string`);
+}
+
 export function validateRunEvent(raw: unknown): RunEvent {
   if (!raw || typeof raw !== "object") {
     throw new Error("event must be an object");
@@ -16,10 +41,8 @@ export function validateRunEvent(raw: unknown): RunEvent {
   if (!RUN_KINDS.includes(kind as (typeof RUN_KINDS)[number])) {
     throw new Error(`event.kind must be one of: ${RUN_KINDS.join(", ")}`);
   }
-  const iteration =
-    typeof o.iteration === "number" && Number.isInteger(o.iteration) ? o.iteration : undefined;
-  const featureId =
-    typeof o.featureId === "number" && Number.isInteger(o.featureId) ? o.featureId : undefined;
+  const iteration = parseOptionalIntField(o, "iteration");
+  const featureId = parseOptionalIntField(o, "featureId");
   const ts = typeof o.ts === "string" && o.ts.trim() ? o.ts.trim() : new Date().toISOString();
   const ev: RunEvent = {
     sessionKey,
