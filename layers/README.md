@@ -4,6 +4,8 @@ TypeScript service for **recording and retrieving** project memory for the [Ralp
 
 **[docs/LAYERS_SPEC.md](../docs/LAYERS_SPEC.md)**
 
+**Documentation (human-oriented):** **[docs/layers/README.md](../docs/layers/README.md)** (user guide, Ralph integration, links to v2 roadmap and **`RALPH_LAYERS_SPEC.md`**).
+
 ## Requirements
 
 - **Node.js 20+** (see `engines` in `package.json`)
