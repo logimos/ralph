@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 4 (optional **OpenAI embeddings** + hybrid retrieve) in **`layers` v0.5.x** (see §10). Set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`** for hybrid search; optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`) and **`LAYERS_EMBEDDING_TIMEOUT_MS`** (default 60000). Without a key, **`v1 retrieve`** stays **FTS-only** (`meta.ftsOnly: true`). Embeddings are stored as **Float32 BLOB** on `memories.embedding` and filled lazily on retrieve; invalid-length blobs are treated as missing.
+**Revision:** Phase 5 (**optional HTTP** on loopback) in **`layers` v0.6.x** (see §10). Run **`layers v1 serve`** (default **`127.0.0.1:7847`**) — **`POST /v1/retrieve`**, **`POST /v1/record`**, etc., same JSON bodies as CLI stdin; **`GET /v1/health`** (**`POST /v1/health`** → 405). Request body cap via **`LAYERS_HTTP_MAX_BODY_BYTES`**. Phase 4 still applies: **`LAYERS_OPENAI_API_KEY`** / hybrid embeddings, **`LAYERS_EMBEDDING_TIMEOUT_MS`**, etc.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -171,7 +171,7 @@ Ralph’s `@` path should point at **snapshot** produced by Layers, not the raw 
 | Mode | Use |
 |------|-----|
 | **CLI** | `layers <command> [options]` — JSON on stdin / stdout for batch-friendly Ralph `exec` |
-| **HTTP** | `127.0.0.1` server (optional) — same payloads as REST bodies |
+| **HTTP** | `127.0.0.1` server (optional) — **same JSON** as CLI stdin per path (§7.2) |
 
 Environment:
 
@@ -180,17 +180,32 @@ Environment:
 - `LAYERS_OPENAI_API_KEY` or `OPENAI_API_KEY` — enables hybrid retrieval embeddings.
 - `LAYERS_EMBEDDING_MODEL` — OpenAI embedding model id (optional).
 - `LAYERS_EMBEDDING_TIMEOUT_MS` — embed request timeout in ms (default **60000**, max **600000**).
+- `LAYERS_HTTP_HOST` / `LAYERS_HTTP_PORT` — HTTP bind (defaults **`127.0.0.1`** / **`7847`**); override CLI: `layers v1 serve --host=… --port=…`.
+- `LAYERS_HTTP_ALLOW_REMOTE` — set to **`1`** or **`true`** to allow binding a **non-loopback** host (e.g. `0.0.0.0`); otherwise only **`127.0.0.1`**, **`::1`**, **`localhost`** are accepted.
+- `LAYERS_HTTP_MAX_BODY_BYTES` — max JSON body size per request (default **4 MiB**, max **32 MiB**); larger bodies get **413** `PAYLOAD_TOO_LARGE`.
 
 ### 7.2 CLI commands (normative v1 sketch)
 
 | Command | Stdin | Stdout | Purpose |
 |---------|-------|--------|---------|
+| `layers v1 serve` | — | logs to stderr; blocks until SIGINT | **HTTP** — same contract as table below |
 | `layers v1 retrieve` | `RetrieveRequest` JSON | `RetrieveResponse` JSON | Hybrid search → `contextBlock` |
 | `layers v1 record` | `RecordRequest` JSON | `RecordResponse` JSON | Add/update memories |
 | `layers v1 append-run` | `AppendRunRequest` JSON | `AppendRunResponse` JSON | Layer A append (JSONL) |
 | `layers v1 compact` | `CompactRequest` JSON | `CompactResponse` JSON | Last‑N JSONL → `context-snapshot.md` |
 | `layers v1 import-ralph-memory` | (optional path) | `ImportResponse` JSON | Migrate `.ralph-memory.json` |
 | `layers v1 health` | — | `{ "ok": true, "version": "..." }` | Probe |
+
+**HTTP (mirror CLI):** `POST` with **JSON body** = stdin payload for the matching CLI command. **`GET /v1/health`** returns the same shape as **`layers v1 health`**; **`POST /v1/health`** is **405**. Default **loopback-only** bind; see env above. Import **`memoryFile`** must be a **relative path under `projectRoot`** (no absolute paths, no `..`).
+
+| HTTP | Body (same as CLI stdin) |
+|------|--------------------------|
+| `POST /v1/retrieve` | `RetrieveRequest` |
+| `POST /v1/record` | `RecordRequest` |
+| `POST /v1/append-run` | `AppendRunRequest` |
+| `POST /v1/compact` | `CompactRequest` |
+| `POST /v1/import-ralph-memory` | `ImportRalphMemoryRequest` |
+| `GET /v1/health` | — |
 
 ### 7.3 JSON types (v1)
 
@@ -304,8 +319,8 @@ layers/
   tsconfig.json
   src/
     cli/
-    server/          # optional HTTP
-    index/           # SQLite + FTS
+    http/            # optional HTTP server
+    v1/              # shared v1 handlers (CLI + HTTP)
     embed/           # OpenAI embeddings (optional)
     retrieve/        # hybrid + MMR
     run/             # JSONL append + compact snapshot
@@ -365,8 +380,8 @@ docs/
 
 ### Phase 5 — HTTP server (optional)
 
-- [ ] Mirror CLI payloads at `POST /v1/retrieve`, etc.
-- [ ] Bind localhost only by default.
+- [x] **`layers v1 serve`** — default **`127.0.0.1:7847`**; **`POST /v1/retrieve`**, **`/record`**, **`/append-run`**, **`/compact`**, **`/import-ralph-memory`** (same JSON as CLI stdin); **`GET /v1/health`**.
+- [x] Loopback-only by default; **`LAYERS_HTTP_ALLOW_REMOTE=1`** to bind other hosts.
 
 ### Phase 6 — Ralph integration (Go)
 

@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { importRalphMemoryIntoDb, readRalphMemoryFile } from "./ralphMemory.js";
+import {
+  importRalphMemoryIntoDb,
+  readRalphMemoryFile,
+  resolveMemoryFilePath,
+} from "./ralphMemory.js";
 import { openDatabase } from "../store/open.js";
 
 describe("importRalphMemory", () => {
@@ -83,5 +87,14 @@ describe("importRalphMemory", () => {
     expect(r.imported).toBe(0);
     expect(r.errors.some((m) => m.includes("entries[0]") && m.includes("bad1"))).toBe(true);
     db.close();
+  });
+
+  it("resolveMemoryFilePath rejects traversal and absolute paths", () => {
+    dir = mkdtempSync(join(tmpdir(), "layers-ralph-path-"));
+    expect(() => resolveMemoryFilePath(dir, "../../etc/passwd")).toThrow(/stay within projectRoot/);
+    expect(() => resolveMemoryFilePath(dir, "/etc/passwd")).toThrow(/relative path/);
+    expect(resolveMemoryFilePath(dir, "sub/.ralph-memory.json")).toBe(
+      join(dir, "sub/.ralph-memory.json")
+    );
   });
 });

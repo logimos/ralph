@@ -1,6 +1,6 @@
 {
   "name": "layers",
-  "version": "0.5.1",
+  "version": "0.6.1",
   "private": true,
   "description": "Memory record/retrieve service for Ralph — see ../docs/LAYERS_SPEC.md",
   "type": "module",

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type Database from "better-sqlite3";
 import { insertMemory } from "../store/insert.js";
 
@@ -103,7 +103,24 @@ export function importRalphMemoryIntoDb(db: Database.Database, absPath: string):
   return { imported, skipped, errors };
 }
 
+/**
+ * Resolve a memory file path under `projectRoot`. Rejects absolute paths and `..`
+ * traversal so HTTP callers cannot pivot to arbitrary filesystem paths via `memoryFile`.
+ */
 export function resolveMemoryFilePath(projectRoot: string, memoryFile?: string): string {
+  const root = resolve(projectRoot);
   const rel = memoryFile?.trim() || ".ralph-memory.json";
-  return resolve(projectRoot, rel);
+  if (isAbsolute(rel)) {
+    throw Object.assign(new Error("memoryFile must be a relative path within projectRoot"), {
+      code: "INVALID_REQUEST",
+    });
+  }
+  const absTarget = resolve(root, rel);
+  const relToRoot = relative(root, absTarget);
+  if (relToRoot.startsWith("..") || relToRoot === "..") {
+    throw Object.assign(new Error("memoryFile must stay within projectRoot"), {
+      code: "INVALID_REQUEST",
+    });
+  }
+  return absTarget;
 }
