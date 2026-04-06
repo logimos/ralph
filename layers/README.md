@@ -26,7 +26,7 @@ Or use **Make**:
 make layers-test
 ```
 
-## CLI (Phase 0)
+## CLI
 
 After `npm run build -w layers`:
 
@@ -34,11 +34,29 @@ After `npm run build -w layers`:
 node layers/dist/cli/main.js v1 health
 ```
 
-Response: JSON with `ok`, `version` (from `layers/package.json`), and `service: "layers"`.
+**Phase 1 — record** (stdin JSON, see `docs/LAYERS_SPEC.md` §7.3):
+
+```bash
+echo '{"projectRoot":"/abs/repo","entries":[{"type":"decision","content":"Use SQLite","source":"agent"}]}' \
+  | node layers/dist/cli/main.js v1 record
+```
+
+Database: `<projectRoot>/.layers/memory.db` (override with `dataDir` in JSON).
+
+**Phase 1 — import** legacy Ralph memory (`.ralph-memory.json` from `internal/memory`):
+
+```bash
+echo '{"projectRoot":"/abs/repo"}' | node layers/dist/cli/main.js v1 import-ralph-memory
+# or explicit file:
+echo '{"projectRoot":"/abs/repo"}' | node layers/dist/cli/main.js v1 import-ralph-memory /path/to/.ralph-memory.json
+```
+
+If stdin is omitted, set `LAYERS_PROJECT_ROOT` and optional path as first argument.
 
 ## Status
 
-**Phase 0** complete: TypeScript scaffold, strict build, ESLint, Prettier, Vitest, CI workflow, versioned health command. Later phases implement storage and retrieval per `docs/LAYERS_SPEC.md`.
+- **Phase 0**: scaffold, health, lint, tests, CI.
+- **Phase 1**: SQLite + FTS5, `v1 record`, `v1 import-ralph-memory` (idempotent). **Phase 2**: `retrieve` (hybrid search) per `docs/LAYERS_SPEC.md`.
 
 ## Quick links
 

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { runCli } from "./run.js";
 
+const emptyEnv = {};
+const emptyStdin = "";
+
 describe("runCli", () => {
   it("v1 health returns ok JSON and exit 0", () => {
-    const r = runCli(["v1", "health"]);
+    const r = runCli(["v1", "health"], emptyEnv, emptyStdin);
     expect(r.code).toBe(0);
     expect(r.stderr).toBe("");
     const parsed = JSON.parse(r.stdout.trim()) as {
@@ -17,14 +20,14 @@ describe("runCli", () => {
   });
 
   it("unknown args exit 1 with usage on stderr", () => {
-    const r = runCli([]);
+    const r = runCli([], emptyEnv, emptyStdin);
     expect(r.code).toBe(1);
     expect(r.stdout).toBe("");
     expect(r.stderr).toContain("Usage:");
   });
 
   it("v1 alone exits 1", () => {
-    const r = runCli(["v1"]);
+    const r = runCli(["v1"], emptyEnv, emptyStdin);
     expect(r.code).toBe(1);
   });
 });
