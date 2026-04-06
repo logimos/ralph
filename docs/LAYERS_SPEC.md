@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 5 (**optional HTTP** on loopback) in **`layers` v0.6.x** (see §10). Run **`layers v1 serve`** (default **`127.0.0.1:7847`**) — **`POST /v1/retrieve`**, **`POST /v1/record`**, etc., same JSON bodies as CLI stdin; **`GET /v1/health`** (**`POST /v1/health`** → 405). Request body cap via **`LAYERS_HTTP_MAX_BODY_BYTES`**. Phase 4 still applies: **`LAYERS_OPENAI_API_KEY`** / hybrid embeddings, **`LAYERS_EMBEDDING_TIMEOUT_MS`**, etc.
+**Revision:** Phase 6 (**Ralph Go** integration) + Phase 5 HTTP. Ralph: **`-layers-enabled`** (see §7.4). **`layers` v0.6.x**: **`layers v1 serve`** (default **`127.0.0.1:7847`**), hybrid embeddings optional (**`LAYERS_OPENAI_API_KEY`**).
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -307,7 +307,7 @@ Errors: **exit code non-zero**, stderr human message; stdout may still carry `{ 
 | Optional | **`append-run`** with iteration id, feature id, structured summary |
 | End of run / size threshold | **`compact`** (or cron) |
 
-Configuration keys (future Ralph PR): `layers_enabled`, `layers_command`, `layers_url`, `layers_data_dir`.
+Ralph flags: **`-layers-enabled`**, **`-layers-command`**, **`-layers-url`**, **`-layers-data-dir`**. Config file keys: **`layers_enabled`**, **`layers_command`**, **`layers_url`**, **`layers_data_dir`**. Implementation: **`internal/layers`** (CLI subprocess or HTTP). **`-layers-command`** supports **double-quoted** segments for paths with spaces (e.g. `node "/path/with spaces/main.js"`). Each Layers call uses a **2-minute** timeout; **`record`** failures fall back to **`.ralph-memory.json`**. When CLI mode is used, Ralph checks the executable exists on **PATH** at startup (warns and disables Layers if not).
 
 ---
 
@@ -385,10 +385,12 @@ docs/
 
 ### Phase 6 — Ralph integration (Go)
 
-- [ ] Config flags / env for Layers.
-- [ ] Replace or gate `memory.BuildPromptContext` behind **Layers retrieve** when enabled.
-- [ ] Forward `[REMEMBER:…]` extracts to **`record`**.
-- [ ] E2E: one repo with `.layers` + iteration loop.
+- [x] Config: **`-layers-enabled`**, **`-layers-command`**, **`-layers-url`**, **`-layers-data-dir`**; YAML **`layers_enabled`**, **`layers_command`**, **`layers_url`**, **`layers_data_dir`** (see `internal/config`).
+- [x] When **`-layers-enabled`**: **`retrieve`** before each iteration (query from current untested plan feature); prepends **`contextBlock`**; on failure falls back to **`memory.BuildPromptContext`**.
+- [x] **`[REMEMBER:…]`** → **`record`** batch (skips writing **`.ralph-memory.json`** for those entries when Layers is on).
+- [x] **`append-run`** (iteration + feature id) and **`compact`** at end of run (verbose logs failures).
+
+E2E: run **`layers`** on PATH or **`-layers-url`**, enable **`-layers-enabled`**, run Ralph with **`-iterations`** ≥ 1.
 
 ---
 

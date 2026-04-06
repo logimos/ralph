@@ -115,7 +115,7 @@ Default snapshot path: `<projectRoot>/.layers/context-snapshot.md`. Override wit
 - **Phase 3**: `v1 append-run`, `v1 compact` — JSONL run log + markdown snapshot.
 - **Phase 4**: optional OpenAI embeddings + hybrid retrieve; lazy embedding cache in SQLite.
 - **Phase 5**: optional HTTP (`v1 serve`, loopback by default) — same JSON as CLI.
-- **Next**: Phase 6 — Ralph Go integration (`docs/LAYERS_SPEC.md`).
+- **Phase 6**: Ralph (Go) — **`-layers-enabled`**, **`-layers-url`** / **`-layers-command`** (`internal/layers`, `docs/LAYERS_SPEC.md` §7.4).
 
 ## Quick links
 

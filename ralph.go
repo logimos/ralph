@@ -15,6 +15,7 @@ import (
 	"github.com/logimos/ralph/internal/detection"
 	"github.com/logimos/ralph/internal/environment"
 	"github.com/logimos/ralph/internal/goals"
+	"github.com/logimos/ralph/internal/layers"
 	"github.com/logimos/ralph/internal/memory"
 	"github.com/logimos/ralph/internal/milestone"
 	"github.com/logimos/ralph/internal/multiagent"
@@ -32,6 +33,16 @@ var (
 	// Version is set at build time via ldflags
 	Version = "dev"
 )
+
+// layersOperationTimeout caps each Layers subprocess or HTTP call so a hung service cannot block forever.
+const layersOperationTimeout = 2 * time.Minute
+
+func layersOpContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, layersOperationTimeout)
+}
 
 func main() {
 	cfg := parseFlags()
@@ -234,6 +245,11 @@ func parseFlags() *config.Config {
 	flag.IntVar(&cfg.ParallelAgents, "parallel-agents", config.DefaultParallelAgents, "Maximum number of agents to run in parallel")
 	flag.BoolVar(&cfg.ListAgents, "list-agents", false, "List configured agents")
 	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Enable multi-agent collaboration mode")
+	// Layers memory (TypeScript service; see docs/LAYERS_SPEC.md)
+	flag.BoolVar(&cfg.LayersEnabled, "layers-enabled", false, "Use Layers for memory retrieve/record (does not write .ralph-memory.json for new memories)")
+	flag.StringVar(&cfg.LayersCommand, "layers-command", "", "Layers CLI: binary or 'node path/to/layers/dist/cli/main.js' (default: layers on PATH)")
+	flag.StringVar(&cfg.LayersURL, "layers-url", "", "Layers HTTP base URL (e.g. http://127.0.0.1:7847); if set, uses HTTP instead of subprocess")
+	flag.StringVar(&cfg.LayersDataDir, "layers-data-dir", "", "Optional Layers data directory override")
 
 	flag.Usage = func() {
 		// Version already includes 'v' prefix from git tags, so don't add another
@@ -608,6 +624,19 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.EnableMultiAgent && !explicitFlags["multi-agent"] {
 		cfg.EnableMultiAgent = fileCfg.EnableMultiAgent
 	}
+	// Layers
+	if fileCfg.LayersEnabled && !explicitFlags["layers-enabled"] {
+		cfg.LayersEnabled = fileCfg.LayersEnabled
+	}
+	if fileCfg.LayersCommand != "" && !explicitFlags["layers-command"] {
+		cfg.LayersCommand = fileCfg.LayersCommand
+	}
+	if fileCfg.LayersURL != "" && !explicitFlags["layers-url"] {
+		cfg.LayersURL = fileCfg.LayersURL
+	}
+	if fileCfg.LayersDataDir != "" && !explicitFlags["layers-data-dir"] {
+		cfg.LayersDataDir = fileCfg.LayersDataDir
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -715,6 +744,26 @@ func runIterations(cfg *config.Config) error {
 		output.Warn("Failed to load memory: %v", err)
 	}
 
+	// Layers (optional): project root = directory containing plan file
+	var layersProjectRoot string
+	var layersClient *layers.Client
+	if cfg.LayersEnabled {
+		root, err := layers.ProjectRoot(cfg.PlanFile)
+		if err != nil {
+			output.Warn("Layers enabled but could not resolve project root from plan file: %v", err)
+		} else {
+			layersProjectRoot = root
+			layersClient = layersClientFromConfig(cfg)
+			if err := layers.ValidateCLI(cfg.LayersCommand, cfg.LayersURL != ""); err != nil {
+				output.Warn("Layers enabled but CLI is not usable: %v", err)
+				layersClient = nil
+			}
+			if cfg.Verbose && layersClient != nil {
+				output.Debug("Layers: projectRoot=%s", layersProjectRoot)
+			}
+		}
+	}
+
 	// Prune expired memories
 	pruned, _ := memStore.Prune()
 	if pruned > 0 && cfg.Verbose {
@@ -736,23 +785,26 @@ func runIterations(cfg *config.Config) error {
 	if memStore.Count() > 0 {
 		output.Info("Memory: %d entries loaded from %s", memStore.Count(), cfg.MemoryFile)
 	}
+	if cfg.LayersEnabled && layersProjectRoot != "" {
+		output.Info("Layers memory: enabled (retrieve/record via Layers; new memories skip %s)", cfg.MemoryFile)
+	}
 	if nudgeStore.ActiveCount() > 0 {
 		output.Info("Nudges: %d active nudge(s) from %s", nudgeStore.ActiveCount(), cfg.NudgeFile)
 	}
-	
+
 	// Load plans and create milestone manager
 	plans, planErr := plan.ReadFile(cfg.PlanFile)
 	var milestoneMgr *milestone.Manager
 	var completedMilestonesBefore map[string]bool
 	if planErr == nil {
 		milestoneMgr = milestone.NewManager(plans)
-		
+
 		// Record which milestones are complete before we start
 		completedMilestonesBefore = make(map[string]bool)
 		for _, p := range milestoneMgr.GetCompletedMilestones() {
 			completedMilestonesBefore[p.Milestone.Name] = true
 		}
-		
+
 		// Show milestone progress in verbose mode
 		if cfg.Verbose && milestoneMgr.HasMilestones() {
 			output.SubHeader("Milestone Progress")
@@ -761,7 +813,7 @@ func runIterations(cfg *config.Config) error {
 			}
 		}
 	}
-	
+
 	if cfg.Verbose {
 		output.Debug("Type check command: %s", cfg.TypeCheckCmd)
 		output.Debug("Test command: %s", cfg.TestCmd)
@@ -796,7 +848,7 @@ func runIterations(cfg *config.Config) error {
 	if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
 		output.Info("Scope control: %s", formatScopeInfo(cfg))
 	}
-	
+
 	// Show replan info if enabled
 	if cfg.AutoReplan {
 		output.Info("Auto-replan: enabled (strategy: %s, threshold: %d failures)", cfg.ReplanStrategy, cfg.ReplanThreshold)
@@ -811,6 +863,7 @@ func runIterations(cfg *config.Config) error {
 	currentFeatureID := 0
 	currentFeatureSteps := 0
 	currentFeatureDesc := ""
+	currentFeatureCategory := ""
 	var additionalPromptGuidance string
 
 	for i := 1; i <= cfg.Iterations; i++ {
@@ -821,16 +874,17 @@ func runIterations(cfg *config.Config) error {
 		}
 
 		// Get current feature from plans (first untested, non-deferred)
-		detectedFeatureID, detectedSteps, detectedDesc := extractCurrentFeatureFromPlans(cfg.PlanFile)
+		detectedFeatureID, detectedSteps, detectedDesc, detectedCat := extractCurrentFeatureFromPlans(cfg.PlanFile)
 		if detectedFeatureID > 0 && detectedFeatureID != currentFeatureID {
 			// New feature detected - start tracking it
 			currentFeatureID = detectedFeatureID
 			currentFeatureSteps = detectedSteps
 			currentFeatureDesc = detectedDesc
+			currentFeatureCategory = detectedCat
 			scopeMgr.StartFeature(currentFeatureID, currentFeatureSteps, currentFeatureDesc)
 			if cfg.Verbose {
 				complexity := scope.EstimateComplexity(currentFeatureSteps, currentFeatureDesc)
-				output.Debug("Working on feature #%d (%s complexity): %s", 
+				output.Debug("Working on feature #%d (%s complexity): %s",
 					currentFeatureID, complexity, currentFeatureDesc)
 			}
 		}
@@ -845,26 +899,26 @@ func runIterations(cfg *config.Config) error {
 		if shouldDefer, reason := scopeMgr.ShouldDefer(currentFeatureID); shouldDefer && currentFeatureID > 0 {
 			scopeMgr.DeferFeature(currentFeatureID, reason)
 			output.Warn("Feature #%d deferred: %s", currentFeatureID, scope.FormatDeferralReason(reason))
-			
+
 			// Mark feature as deferred in plan file
 			if err := markFeatureDeferred(cfg.PlanFile, currentFeatureID, string(reason)); err != nil {
 				output.Debug("Failed to update plan file: %v", err)
 			}
-			
+
 			// Log deferral to progress file
-			deferMsg := fmt.Sprintf("DEFERRED: Feature #%d - %s (iterations used: %d)", 
-				currentFeatureID, scope.FormatDeferralReason(reason), 
+			deferMsg := fmt.Sprintf("DEFERRED: Feature #%d - %s (iterations used: %d)",
+				currentFeatureID, scope.FormatDeferralReason(reason),
 				scopeMgr.GetFeatureScope(currentFeatureID).IterationsUsed)
 			appendProgress(cfg.ProgressFile, deferMsg)
-			
+
 			summary.FeaturesSkipped++
-			
+
 			// Reset current feature - agent will move to next
 			currentFeatureID = 0
 		}
 
 		// Check for simplification suggestion
-		if currentFeatureID > 0 && scopeMgr.ShouldSuggestSimplification(currentFeatureID) && 
+		if currentFeatureID > 0 && scopeMgr.ShouldSuggestSimplification(currentFeatureID) &&
 			!scopeMgr.WasSimplificationSuggested(currentFeatureID) {
 			suggestions := scope.SuggestSimplification(currentFeatureSteps, currentFeatureDesc)
 			output.Warn("Feature #%d may be complex. Suggestions:", currentFeatureID)
@@ -899,10 +953,33 @@ func runIterations(cfg *config.Config) error {
 
 		// Build the prompt for the AI agent, including any recovery guidance
 		iterPrompt := prompt.BuildIterationPrompt(cfg)
-		
-		// Inject memory context (relevant memories based on current feature category)
-		// Note: category could be extracted from the plan in a future enhancement
-		memoryContext := memStore.BuildPromptContext("", 10) // Get top 10 relevant memories
+
+		// Inject memory context: Layers retrieve when enabled, else flat JSON store
+		memoryContext := memStore.BuildPromptContext("", 10)
+		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
+			req := layers.RetrieveRequest{
+				ProjectRoot: layersProjectRoot,
+			}
+			if cfg.LayersDataDir != "" {
+				req.DataDir = cfg.LayersDataDir
+			}
+			req.Query.Text = buildLayersRetrieveQuery(currentFeatureCategory, currentFeatureDesc)
+			if strings.TrimSpace(currentFeatureCategory) != "" {
+				req.Query.Category = currentFeatureCategory
+			}
+			if currentFeatureID > 0 {
+				req.Query.FeatureID = currentFeatureID
+			}
+			req.Options = &layers.RetrieveOptions{TopK: 10, MaxTokens: 2000}
+			lctx, cancel := layersOpContext(context.Background())
+			resp, err := layersClient.Retrieve(lctx, req)
+			cancel()
+			if err != nil {
+				output.Warn("Layers retrieve failed, using flat memory file: %v", err)
+			} else if strings.TrimSpace(resp.ContextBlock) != "" {
+				memoryContext = strings.TrimSpace(resp.ContextBlock) + "\n\n"
+			}
+		}
 		if memoryContext != "" {
 			iterPrompt = memoryContext + iterPrompt
 		}
@@ -912,7 +989,7 @@ func runIterations(cfg *config.Config) error {
 		if nudgeContext != "" {
 			iterPrompt = nudgeContext + iterPrompt
 		}
-		
+
 		if additionalPromptGuidance != "" {
 			iterPrompt = additionalPromptGuidance + "\n\n" + iterPrompt
 			additionalPromptGuidance = "" // Clear after use
@@ -924,7 +1001,7 @@ func runIterations(cfg *config.Config) error {
 
 		// Execute the AI agent CLI tool
 		result, err := agent.Execute(cfg, iterPrompt)
-		
+
 		// Stop spinner
 		if spinner != nil {
 			spinner.Stop()
@@ -943,9 +1020,40 @@ func runIterations(cfg *config.Config) error {
 		}
 
 		// Extract and store any memories from the agent output
-		memoriesStored := extractAndStoreMemories(memStore, result, "")
+		var memoriesStored int
+		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
+			memoriesStored = extractAndStoreMemoriesLayers(output, cfg, memStore, layersClient, layersProjectRoot, result, currentFeatureID, currentFeatureCategory)
+		} else {
+			memoriesStored = extractAndStoreMemories(memStore, result, "")
+		}
 		if memoriesStored > 0 && cfg.Verbose {
 			output.Debug("Extracted and stored %d new memories from agent output", memoriesStored)
+		}
+
+		// Layer A: append structured run event (optional; requires Layers)
+		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
+			ev := layers.AppendRunRequest{
+				ProjectRoot: layersProjectRoot,
+			}
+			if cfg.LayersDataDir != "" {
+				ev.DataDir = cfg.LayersDataDir
+			}
+			ev.Event = layers.RunEventInput{
+				SessionKey: "ralph",
+				Kind:       "structured",
+				Iteration:  i,
+				FeatureID:  currentFeatureID,
+				Payload: map[string]any{
+					"iteration": i,
+					"featureId": currentFeatureID,
+				},
+			}
+			actx, acancel := layersOpContext(context.Background())
+			aerr := layersClient.AppendRun(actx, ev)
+			acancel()
+			if aerr != nil && cfg.Verbose {
+				output.Debug("Layers append-run: %v", aerr)
+			}
 		}
 
 		// Acknowledge nudges that were injected into this iteration
@@ -972,12 +1080,12 @@ func runIterations(cfg *config.Config) error {
 			summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
 			output.PrintSummary(summary)
 			printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
-			
+
 			// Show scope summary if scope control was active
 			if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
 				printScopeSummary(output, scopeMgr, cfg.Verbose)
 			}
-			
+
 			// Show final milestone status
 			if milestoneMgr != nil && milestoneMgr.HasMilestones() {
 				output.SubHeader("Final Milestone Status")
@@ -985,14 +1093,14 @@ func runIterations(cfg *config.Config) error {
 			}
 			return nil
 		}
-		
+
 		// Check for newly completed milestones
 		if milestoneMgr != nil && milestoneMgr.HasMilestones() {
 			// Reload plans to get updated tested status
 			updatedPlans, err := plan.ReadFile(cfg.PlanFile)
 			if err == nil {
 				milestoneMgr = milestone.NewManager(updatedPlans)
-				
+
 				// Check for newly completed milestones
 				for _, p := range milestoneMgr.GetCompletedMilestones() {
 					if !completedMilestonesBefore[p.Milestone.Name] {
@@ -1010,14 +1118,14 @@ func runIterations(cfg *config.Config) error {
 			}
 
 			failure, recoveryResult := recoveryMgr.HandleFailure(result, exitCode, currentFeatureID, i)
-			
+
 			if failure != nil {
 				output.Warn("Failure detected: %s", failure)
 				summary.Errors = append(summary.Errors, failure.String())
-				
+
 				// Track consecutive failures for replanning
 				consecutiveFailures++
-				
+
 				// Log failure to progress file
 				logFailureToProgress(cfg.ProgressFile, failure)
 
@@ -1040,15 +1148,15 @@ func runIterations(cfg *config.Config) error {
 					output.Error("Recovery action failed: %s", recoveryResult.Message)
 					summary.FeaturesFailed++
 				}
-				
+
 				// Check for replanning triggers
 				replanMgr.UpdateState(currentFeatureID, consecutiveFailures, []string{string(failure.Type)}, plans)
 				replanMgr.IncrementIterations()
-				
+
 				if shouldReplan, trigger := replanMgr.ShouldReplan(); shouldReplan {
 					output.SubHeader("Automatic Replanning Triggered")
 					output.Info("Trigger: %s", trigger)
-					
+
 					replanResult, replanErr := replanMgr.ExecuteReplan(replanStrategyType, trigger)
 					if replanErr != nil {
 						output.Error("Replanning failed: %v", replanErr)
@@ -1089,18 +1197,18 @@ func runIterations(cfg *config.Config) error {
 	summary.FailuresRecovered = recoveryMgr.GetRecoveredCount()
 	output.PrintSummary(summary)
 	printRecoverySummaryUI(output, recoveryMgr, cfg.Verbose)
-	
+
 	// Print scope summary if scope control was active
 	if cfg.ScopeLimit > 0 || cfg.Deadline != "" {
 		printScopeSummary(output, scopeMgr, cfg.Verbose)
 	}
-	
+
 	// Print memory summary if we have memories
 	if memStore.Count() > 0 && cfg.Verbose {
 		output.SubHeader("Memory Status")
 		output.Print("Total memories: %d (stored in %s)", memStore.Count(), cfg.MemoryFile)
 	}
-	
+
 	// Print milestone summary if milestones are defined
 	if milestoneMgr != nil && milestoneMgr.HasMilestones() {
 		// Reload plans to get updated tested status
@@ -1110,7 +1218,7 @@ func runIterations(cfg *config.Config) error {
 		}
 		output.SubHeader("Milestone Progress")
 		output.Print("%s", milestoneMgr.Summary())
-		
+
 		// Show next milestone to complete
 		next := milestoneMgr.GetNextMilestoneToComplete()
 		if next != nil {
@@ -1119,7 +1227,21 @@ func runIterations(cfg *config.Config) error {
 				milestone.FormatProgressBar(next, 20))
 		}
 	}
-	
+
+	// Bounded snapshot for prompts / review (optional)
+	if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
+		creq := layers.CompactRequest{ProjectRoot: layersProjectRoot}
+		if cfg.LayersDataDir != "" {
+			creq.DataDir = cfg.LayersDataDir
+		}
+		cctx, ccancel := layersOpContext(context.Background())
+		cerr := layersClient.Compact(cctx, creq)
+		ccancel()
+		if cerr != nil && cfg.Verbose {
+			output.Debug("Layers compact: %v", cerr)
+		}
+	}
+
 	return nil
 }
 
@@ -1135,7 +1257,7 @@ func containsFailureIndicators(output string) bool {
 		"test failed",
 		"assertion failed",
 	}
-	
+
 	for _, indicator := range indicators {
 		if strings.Contains(outputLower, indicator) {
 			return true
@@ -1148,7 +1270,7 @@ func containsFailureIndicators(output string) bool {
 func logFailureToProgress(progressFile string, failure *recovery.Failure) {
 	message := fmt.Sprintf("FAILURE [%s]: %s (feature #%d, retry %d)",
 		failure.Type, failure.Message, failure.FeatureID, failure.RetryCount)
-	
+
 	if err := appendProgress(progressFile, message); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log failure to progress file: %v\n", err)
 	}
@@ -1432,6 +1554,59 @@ func extractAndStoreMemories(store *memory.Store, output, category string) int {
 	return stored
 }
 
+// extractAndStoreMemoriesLayers sends [REMEMBER:…] extracts to the Layers TS service (record).
+func extractAndStoreMemoriesLayers(
+	uiOut *ui.UI,
+	cfg *config.Config,
+	memStore *memory.Store,
+	lc *layers.Client,
+	projectRoot string,
+	agentOutput string,
+	featureID int,
+	category string,
+) int {
+	entries := memory.ExtractFromOutput(agentOutput)
+	if len(entries) == 0 {
+		return 0
+	}
+	var rec []layers.RecordEntry
+	for _, e := range entries {
+		re := layers.RecordEntry{
+			Type:     string(e.Type),
+			Content:  e.Content,
+			Category: category,
+			Source:   "agent",
+		}
+		if featureID > 0 {
+			fid := featureID
+			re.FeatureID = &fid
+		}
+		rec = append(rec, re)
+	}
+	req := layers.RecordRequest{
+		ProjectRoot: projectRoot,
+		Entries:     rec,
+	}
+	if cfg.LayersDataDir != "" {
+		req.DataDir = cfg.LayersDataDir
+	}
+	rctx, cancel := layersOpContext(context.Background())
+	err := lc.Record(rctx, req)
+	cancel()
+	if err != nil {
+		uiOut.Warn("Layers record failed, saving to flat memory file instead: %v", err)
+		n := 0
+		for _, e := range entries {
+			e.Category = category
+			if _, aerr := memStore.Add(e.Type, e.Content, category, "agent"); aerr == nil {
+				n++
+			}
+		}
+		return n
+	}
+	return len(rec)
+}
+
 // formatScopeInfo returns a formatted string of scope control settings
 func formatScopeInfo(cfg *config.Config) string {
 	var parts []string
@@ -1463,11 +1638,11 @@ func markFeatureDeferred(planFile string, featureID int, reason string) error {
 // printScopeSummary prints a summary of scope control results
 func printScopeSummary(output *ui.UI, scopeMgr *scope.Manager, verbose bool) {
 	status := scopeMgr.GetStatus()
-	
+
 	if status.DeferredCount > 0 || verbose {
 		output.SubHeader("Scope Summary")
 		output.Print("Elapsed time: %s", status.ElapsedTime.Round(time.Second))
-		
+
 		if status.DeadlineSet {
 			if status.DeadlineExceeded {
 				output.Warn("Deadline: EXCEEDED")
@@ -1475,7 +1650,7 @@ func printScopeSummary(output *ui.UI, scopeMgr *scope.Manager, verbose bool) {
 				output.Print("Time remaining: %s", status.RemainingTime.Round(time.Second))
 			}
 		}
-		
+
 		if status.DeferredCount > 0 {
 			output.Warn("Deferred features: %d (IDs: %v)", status.DeferredCount, status.DeferredFeatureIDs)
 			output.Print("")
@@ -1486,19 +1661,45 @@ func printScopeSummary(output *ui.UI, scopeMgr *scope.Manager, verbose bool) {
 }
 
 // extractCurrentFeatureFromPlans tries to get the current feature being worked on
-func extractCurrentFeatureFromPlans(planFile string) (int, int, string) {
+func extractCurrentFeatureFromPlans(planFile string) (id int, steps int, description string, category string) {
 	plans, err := plan.ReadFile(planFile)
 	if err != nil {
-		return 0, 0, ""
+		return 0, 0, "", ""
 	}
 
 	// Find first untested, non-deferred feature
 	for _, p := range plans {
 		if !p.Tested && !p.Deferred {
-			return p.ID, len(p.Steps), p.Description
+			return p.ID, len(p.Steps), p.Description, p.Category
 		}
 	}
-	return 0, 0, ""
+	return 0, 0, "", ""
+}
+
+func layersClientFromConfig(cfg *config.Config) *layers.Client {
+	c := &layers.Client{
+		Command: cfg.LayersCommand,
+		BaseURL: cfg.LayersURL,
+	}
+	if cfg.LayersDataDir != "" {
+		c.Env = append(os.Environ(), "LAYERS_DATA_DIR="+cfg.LayersDataDir)
+	}
+	return c
+}
+
+func buildLayersRetrieveQuery(category, description string) string {
+	desc := strings.TrimSpace(description)
+	cat := strings.TrimSpace(category)
+	if cat != "" && desc != "" {
+		return cat + " — " + desc
+	}
+	if desc != "" {
+		return desc
+	}
+	if cat != "" {
+		return cat
+	}
+	return "development context"
 }
 
 // handleReplanCommands processes replan-related CLI commands
@@ -1726,7 +1927,7 @@ func handleValidationCommands(cfg *config.Config) error {
 
 	// Print summary
 	output.Header("Validation Summary")
-	
+
 	status := "PASSED"
 	if totalFailed > 0 {
 		status = "FAILED"
@@ -1918,7 +2119,7 @@ func handleGoalCommands(cfg *config.Config) error {
 
 		output.Header("Goal Progress")
 		allProgress := goalMgr.CalculateAllProgress()
-		
+
 		for _, p := range allProgress {
 			if p.TotalPlanItems > 0 {
 				output.Print("  %s: %s", p.Goal.Description, goals.FormatProgressBar(p, 20))
@@ -2080,21 +2281,21 @@ func decomposeGoal(cfg *config.Config, output *ui.UI, goalMgr *goals.Manager, go
 				// Plans were written directly
 				newCount := len(updatedPlans) - len(existingPlans)
 				output.Success("Generated %d plan items (written directly by agent)", newCount)
-				
+
 				// Link new plan IDs to the goal
 				for i := len(existingPlans); i < len(updatedPlans); i++ {
 					goalMgr.LinkPlanToGoal(goal.ID, updatedPlans[i].ID)
 				}
-				
+
 				// Update goal status
 				goal.Status = goals.StatusInProgress
 				goalMgr.UpdateGoal(*goal)
 				goalMgr.SaveGoals()
-				
+
 				return nil
 			}
 		}
-		
+
 		output.Debug("Raw agent output: %s", result)
 		return fmt.Errorf("decomposition produced no plan items: %s", decompResult.Message)
 	}
@@ -2118,7 +2319,7 @@ func decomposeGoal(cfg *config.Config, output *ui.UI, goalMgr *goals.Manager, go
 	goalMgr.SaveGoals()
 
 	output.Success("Generated %d plan items", len(decompResult.GeneratedPlans))
-	
+
 	// Print generated plan items
 	output.Print("")
 	output.Print("Generated plan items:")
