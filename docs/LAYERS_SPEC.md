@@ -307,7 +307,7 @@ Errors: **exit code non-zero**, stderr human message; stdout may still carry `{ 
 | Optional | **`append-run`** with iteration id, feature id, structured summary |
 | End of run / size threshold | **`compact`** (or cron) |
 
-Ralph flags: **`-layers-enabled`**, **`-layers-command`**, **`-layers-url`**, **`-layers-data-dir`**. Config file keys: **`layers_enabled`**, **`layers_command`**, **`layers_url`**, **`layers_data_dir`**. Implementation: **`internal/layers`** (CLI subprocess or HTTP).
+Ralph flags: **`-layers-enabled`**, **`-layers-command`**, **`-layers-url`**, **`-layers-data-dir`**. Config file keys: **`layers_enabled`**, **`layers_command`**, **`layers_url`**, **`layers_data_dir`**. Implementation: **`internal/layers`** (CLI subprocess or HTTP). **`-layers-command`** supports **double-quoted** segments for paths with spaces (e.g. `node "/path/with spaces/main.js"`). Each Layers call uses a **2-minute** timeout; **`record`** failures fall back to **`.ralph-memory.json`**. When CLI mode is used, Ralph checks the executable exists on **PATH** at startup (warns and disables Layers if not).
 
 ---
 

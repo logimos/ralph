@@ -93,15 +93,11 @@ func (c *Client) postCLI(ctx context.Context, subcommand string, body any, out a
 	if err != nil {
 		return err
 	}
-	name := c.cliName()
-	var args []string
-	if strings.Contains(name, " ") {
-		parts := strings.Fields(name)
-		name = parts[0]
-		args = append(parts[1:], "v1", subcommand)
-	} else {
-		args = []string{"v1", subcommand}
+	name, extra := parseCommandLine(c.cliName())
+	if name == "" {
+		name = defaultCLI
 	}
+	args := append(append([]string{}, extra...), "v1", subcommand)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = bytes.NewReader(payload)
 	if len(c.Env) > 0 {

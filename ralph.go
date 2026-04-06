@@ -34,6 +34,16 @@ var (
 	Version = "dev"
 )
 
+// layersOperationTimeout caps each Layers subprocess or HTTP call so a hung service cannot block forever.
+const layersOperationTimeout = 2 * time.Minute
+
+func layersOpContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, layersOperationTimeout)
+}
+
 func main() {
 	cfg := parseFlags()
 
@@ -744,7 +754,11 @@ func runIterations(cfg *config.Config) error {
 		} else {
 			layersProjectRoot = root
 			layersClient = layersClientFromConfig(cfg)
-			if cfg.Verbose {
+			if err := layers.ValidateCLI(cfg.LayersCommand, cfg.LayersURL != ""); err != nil {
+				output.Warn("Layers enabled but CLI is not usable: %v", err)
+				layersClient = nil
+			}
+			if cfg.Verbose && layersClient != nil {
 				output.Debug("Layers: projectRoot=%s", layersProjectRoot)
 			}
 		}
@@ -849,6 +863,7 @@ func runIterations(cfg *config.Config) error {
 	currentFeatureID := 0
 	currentFeatureSteps := 0
 	currentFeatureDesc := ""
+	currentFeatureCategory := ""
 	var additionalPromptGuidance string
 
 	for i := 1; i <= cfg.Iterations; i++ {
@@ -859,12 +874,13 @@ func runIterations(cfg *config.Config) error {
 		}
 
 		// Get current feature from plans (first untested, non-deferred)
-		detectedFeatureID, detectedSteps, detectedDesc := extractCurrentFeatureFromPlans(cfg.PlanFile)
+		detectedFeatureID, detectedSteps, detectedDesc, detectedCat := extractCurrentFeatureFromPlans(cfg.PlanFile)
 		if detectedFeatureID > 0 && detectedFeatureID != currentFeatureID {
 			// New feature detected - start tracking it
 			currentFeatureID = detectedFeatureID
 			currentFeatureSteps = detectedSteps
 			currentFeatureDesc = detectedDesc
+			currentFeatureCategory = detectedCat
 			scopeMgr.StartFeature(currentFeatureID, currentFeatureSteps, currentFeatureDesc)
 			if cfg.Verbose {
 				complexity := scope.EstimateComplexity(currentFeatureSteps, currentFeatureDesc)
@@ -941,23 +957,23 @@ func runIterations(cfg *config.Config) error {
 		// Inject memory context: Layers retrieve when enabled, else flat JSON store
 		memoryContext := memStore.BuildPromptContext("", 10)
 		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
-			fid, cat, desc := currentUntestedFeature(cfg.PlanFile)
 			req := layers.RetrieveRequest{
 				ProjectRoot: layersProjectRoot,
 			}
 			if cfg.LayersDataDir != "" {
 				req.DataDir = cfg.LayersDataDir
 			}
-			req.Query.Text = buildLayersRetrieveQuery(cat, desc)
-			if strings.TrimSpace(cat) != "" {
-				req.Query.Category = cat
+			req.Query.Text = buildLayersRetrieveQuery(currentFeatureCategory, currentFeatureDesc)
+			if strings.TrimSpace(currentFeatureCategory) != "" {
+				req.Query.Category = currentFeatureCategory
 			}
-			if fid > 0 {
-				req.Query.FeatureID = fid
+			if currentFeatureID > 0 {
+				req.Query.FeatureID = currentFeatureID
 			}
 			req.Options = &layers.RetrieveOptions{TopK: 10, MaxTokens: 2000}
-			ctx := context.Background()
-			resp, err := layersClient.Retrieve(ctx, req)
+			lctx, cancel := layersOpContext(context.Background())
+			resp, err := layersClient.Retrieve(lctx, req)
+			cancel()
 			if err != nil {
 				output.Warn("Layers retrieve failed, using flat memory file: %v", err)
 			} else if strings.TrimSpace(resp.ContextBlock) != "" {
@@ -1006,8 +1022,7 @@ func runIterations(cfg *config.Config) error {
 		// Extract and store any memories from the agent output
 		var memoriesStored int
 		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
-			cat := categoryForFeatureID(cfg.PlanFile, currentFeatureID)
-			memoriesStored = extractAndStoreMemoriesLayers(layersClient, layersProjectRoot, cfg, result, currentFeatureID, cat)
+			memoriesStored = extractAndStoreMemoriesLayers(output, cfg, memStore, layersClient, layersProjectRoot, result, currentFeatureID, currentFeatureCategory)
 		} else {
 			memoriesStored = extractAndStoreMemories(memStore, result, "")
 		}
@@ -1033,8 +1048,11 @@ func runIterations(cfg *config.Config) error {
 					"featureId": currentFeatureID,
 				},
 			}
-			if err := layersClient.AppendRun(context.Background(), ev); err != nil && cfg.Verbose {
-				output.Debug("Layers append-run: %v", err)
+			actx, acancel := layersOpContext(context.Background())
+			aerr := layersClient.AppendRun(actx, ev)
+			acancel()
+			if aerr != nil && cfg.Verbose {
+				output.Debug("Layers append-run: %v", aerr)
 			}
 		}
 
@@ -1216,8 +1234,11 @@ func runIterations(cfg *config.Config) error {
 		if cfg.LayersDataDir != "" {
 			creq.DataDir = cfg.LayersDataDir
 		}
-		if err := layersClient.Compact(context.Background(), creq); err != nil && cfg.Verbose {
-			output.Debug("Layers compact: %v", err)
+		cctx, ccancel := layersOpContext(context.Background())
+		cerr := layersClient.Compact(cctx, creq)
+		ccancel()
+		if cerr != nil && cfg.Verbose {
+			output.Debug("Layers compact: %v", cerr)
 		}
 	}
 
@@ -1533,32 +1554,18 @@ func extractAndStoreMemories(store *memory.Store, output, category string) int {
 	return stored
 }
 
-func categoryForFeatureID(planFile string, featureID int) string {
-	if featureID <= 0 {
-		return ""
-	}
-	plans, err := plan.ReadFile(planFile)
-	if err != nil {
-		return ""
-	}
-	for _, p := range plans {
-		if p.ID == featureID {
-			return p.Category
-		}
-	}
-	return ""
-}
-
 // extractAndStoreMemoriesLayers sends [REMEMBER:…] extracts to the Layers TS service (record).
 func extractAndStoreMemoriesLayers(
+	uiOut *ui.UI,
+	cfg *config.Config,
+	memStore *memory.Store,
 	lc *layers.Client,
 	projectRoot string,
-	cfg *config.Config,
-	output string,
+	agentOutput string,
 	featureID int,
 	category string,
 ) int {
-	entries := memory.ExtractFromOutput(output)
+	entries := memory.ExtractFromOutput(agentOutput)
 	if len(entries) == 0 {
 		return 0
 	}
@@ -1583,9 +1590,19 @@ func extractAndStoreMemoriesLayers(
 	if cfg.LayersDataDir != "" {
 		req.DataDir = cfg.LayersDataDir
 	}
-	ctx := context.Background()
-	if err := lc.Record(ctx, req); err != nil {
-		return 0
+	rctx, cancel := layersOpContext(context.Background())
+	err := lc.Record(rctx, req)
+	cancel()
+	if err != nil {
+		uiOut.Warn("Layers record failed, saving to flat memory file instead: %v", err)
+		n := 0
+		for _, e := range entries {
+			e.Category = category
+			if _, aerr := memStore.Add(e.Type, e.Content, category, "agent"); aerr == nil {
+				n++
+			}
+		}
+		return n
 	}
 	return len(rec)
 }
@@ -1644,33 +1661,19 @@ func printScopeSummary(output *ui.UI, scopeMgr *scope.Manager, verbose bool) {
 }
 
 // extractCurrentFeatureFromPlans tries to get the current feature being worked on
-func extractCurrentFeatureFromPlans(planFile string) (int, int, string) {
+func extractCurrentFeatureFromPlans(planFile string) (id int, steps int, description string, category string) {
 	plans, err := plan.ReadFile(planFile)
 	if err != nil {
-		return 0, 0, ""
+		return 0, 0, "", ""
 	}
 
 	// Find first untested, non-deferred feature
 	for _, p := range plans {
 		if !p.Tested && !p.Deferred {
-			return p.ID, len(p.Steps), p.Description
+			return p.ID, len(p.Steps), p.Description, p.Category
 		}
 	}
-	return 0, 0, ""
-}
-
-// currentUntestedFeature returns the first untested plan row (id, category, description).
-func currentUntestedFeature(planFile string) (int, string, string) {
-	plans, err := plan.ReadFile(planFile)
-	if err != nil {
-		return 0, "", ""
-	}
-	for _, p := range plans {
-		if !p.Tested && !p.Deferred {
-			return p.ID, p.Category, p.Description
-		}
-	}
-	return 0, "", ""
+	return 0, 0, "", ""
 }
 
 func layersClientFromConfig(cfg *config.Config) *layers.Client {
