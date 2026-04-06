@@ -244,7 +244,7 @@ func parseFlags() *config.Config {
 	flag.StringVar(&cfg.AgentsFile, "agents", config.DefaultAgentsFile, "Path to multi-agent configuration file")
 	flag.IntVar(&cfg.ParallelAgents, "parallel-agents", config.DefaultParallelAgents, "Maximum number of agents to run in parallel")
 	flag.BoolVar(&cfg.ListAgents, "list-agents", false, "List configured agents")
-	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Enable multi-agent collaboration mode")
+	flag.BoolVar(&cfg.EnableMultiAgent, "multi-agent", false, "Reserved — multi-agent iteration loop is not implemented (see docs/RALPH_ROADMAP.md); use -list-agents to view agents.json")
 	// Layers memory (TypeScript service; see docs/LAYERS_SPEC.md)
 	flag.BoolVar(&cfg.LayersEnabled, "layers-enabled", false, "Use Layers for memory retrieve/record (does not write .ralph-memory.json for new memories)")
 	flag.StringVar(&cfg.LayersCommand, "layers-command", "", "Layers CLI: binary or 'node path/to/layers/dist/cli/main.js' (default: layers on PATH)")
@@ -416,10 +416,12 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    -decompose-goal <id>      Decompose a specific goal into plan items\n")
 		fmt.Fprintf(os.Stderr, "    -decompose-all            Decompose all pending goals\n")
 		fmt.Fprintf(os.Stderr, "    -goals-file <path>        Use custom goals file\n")
-		fmt.Fprintf(os.Stderr, "\nMulti-Agent Collaboration:\n")
-		fmt.Fprintf(os.Stderr, "  Ralph supports multi-agent collaboration for parallel AI coordination.\n")
+		fmt.Fprintf(os.Stderr, "\nMulti-Agent (configuration only):\n")
+		fmt.Fprintf(os.Stderr, "  You can define agents in agents.json and list them with -list-agents.\n")
+		fmt.Fprintf(os.Stderr, "  The main iteration loop does not yet run multiple agents in parallel — -multi-agent is rejected when -iterations is set.\n")
+		fmt.Fprintf(os.Stderr, "  See docs/RALPH_ROADMAP.md for status.\n")
 		fmt.Fprintf(os.Stderr, "  \n")
-		fmt.Fprintf(os.Stderr, "  Agent roles:\n")
+		fmt.Fprintf(os.Stderr, "  Intended agent roles (for future use):\n")
 		fmt.Fprintf(os.Stderr, "    implementer - Creates code and implements features\n")
 		fmt.Fprintf(os.Stderr, "    tester      - Validates code through tests\n")
 		fmt.Fprintf(os.Stderr, "    reviewer    - Checks code quality and suggests improvements\n")
@@ -436,10 +438,9 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "    }\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  Commands:\n")
-		fmt.Fprintf(os.Stderr, "    -multi-agent              Enable multi-agent collaboration mode\n")
 		fmt.Fprintf(os.Stderr, "    -agents <path>            Path to agents configuration file\n")
-		fmt.Fprintf(os.Stderr, "    -parallel-agents <n>      Maximum parallel agents (default: 2)\n")
-		fmt.Fprintf(os.Stderr, "    -list-agents              List configured agents\n")
+		fmt.Fprintf(os.Stderr, "    -parallel-agents <n>      Reserved for future multi-agent runs (default: 2)\n")
+		fmt.Fprintf(os.Stderr, "    -list-agents              List configured agents from agents.json\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s -version                         # Show version information\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -iterations 5                    # Run 5 iterations (auto-detect build system)\n", os.Args[0])
@@ -472,7 +473,6 @@ func parseFlags() *config.Config {
 		fmt.Fprintf(os.Stderr, "  %s -list-goals                      # List all goals\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -decompose-goal auth             # Decompose specific goal\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s -list-agents                     # Show configured agents\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  %s -multi-agent -iterations 5       # Run with multi-agent collaboration\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -669,6 +669,10 @@ func validateConfig(cfg *config.Config) error {
 
 	if cfg.Iterations <= 0 {
 		return fmt.Errorf("iterations must be a positive integer (use -iterations flag)")
+	}
+
+	if cfg.EnableMultiAgent {
+		return fmt.Errorf(`-multi-agent is not implemented for the main loop: the iteration runner still uses a single -agent subprocess. Remove -multi-agent or use -list-agents to inspect agents.json (see docs/RALPH_ROADMAP.md)`)
 	}
 
 	if _, err := os.Stat(cfg.PlanFile); os.IsNotExist(err) {
@@ -2383,7 +2387,7 @@ func handleListAgents(cfg *config.Config) error {
   "conflict_resolution": "priority"
 }`)
 		fmt.Println()
-		fmt.Println("Then run with -multi-agent flag to enable multi-agent mode.")
+		fmt.Println("Multi-agent orchestration in the main loop is not implemented yet (see docs/RALPH_ROADMAP.md).")
 		return nil
 	}
 

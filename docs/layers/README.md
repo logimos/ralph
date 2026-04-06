@@ -8,5 +8,6 @@
 | **[Ralph integration](ralph-integration.md)** | How the Go Ralph CLI uses Layers (`-layers-enabled`, flows, fallbacks) |
 | **[`../LAYERS_SPEC.md`](../LAYERS_SPEC.md)** | Canonical **v1** contract (phases 0–6, JSON types) |
 | **[`../layers_spec_v2.md`](../layers_spec_v2.md)** | **Forward-looking** gaps and evolution (v2 themes) |
+| **[`../RALPH_ROADMAP.md`](../RALPH_ROADMAP.md)** | Ralph-wide burndown (honesty, progress, Layers-related items) |
 
 **Quick start (with Ralph):** build `layers`, ensure `layers` is on `PATH` or pass `-layers-url`, then run Ralph with `-layers-enabled`. Details: [Ralph integration](ralph-integration.md).
