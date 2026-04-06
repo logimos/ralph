@@ -12,6 +12,20 @@ describe("createLayersHttpServer", () => {
     }
   });
 
+  it("POST /v1/health returns 405", async () => {
+    server = createLayersHttpServer({});
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, "127.0.0.1", () => resolve());
+      server.on("error", reject);
+    });
+    const addr = server.address();
+    if (!addr || typeof addr === "string") {
+      throw new Error("expected socket address");
+    }
+    const res = await fetch(`http://127.0.0.1:${addr.port}/v1/health`, { method: "POST" });
+    expect(res.status).toBe(405);
+  });
+
   it("GET /v1/health returns JSON", async () => {
     server = createLayersHttpServer({});
     await new Promise<void>((resolve, reject) => {
@@ -59,5 +73,27 @@ describe("createLayersHttpServer", () => {
     } finally {
       await tmp.rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("returns 413 when body exceeds limit", async () => {
+    server = createLayersHttpServer({ LAYERS_HTTP_MAX_BODY_BYTES: "100" });
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, "127.0.0.1", () => resolve());
+      server.on("error", reject);
+    });
+    const addr = server.address();
+    if (!addr || typeof addr === "string") {
+      throw new Error("expected socket address");
+    }
+    const big = "x".repeat(200);
+    const res = await fetch(`http://127.0.0.1:${addr.port}/v1/record`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectRoot: "/tmp",
+        entries: [{ type: "fact", content: big, source: "agent" }],
+      }),
+    });
+    expect(res.status).toBe(413);
   });
 });

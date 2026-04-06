@@ -111,7 +111,7 @@ export async function runCli(
 
   const stderr = `Usage:
   layers v1 health
-  layers v1 serve [--host=127.0.0.1] [--port=8787]
+  layers v1 serve [--host=127.0.0.1] [--port=7847]
   layers v1 retrieve < stdin.json
   layers v1 record < stdin.json
   layers v1 append-run < stdin.json

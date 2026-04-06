@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 5 (**optional HTTP** on loopback) in **`layers` v0.6.x** (see §10). Run **`layers v1 serve`** (default **`127.0.0.1:7847`**) — **`POST /v1/retrieve`**, **`POST /v1/record`**, etc., same JSON bodies as CLI stdin; **`GET /v1/health`**. Phase 4 still applies: **`LAYERS_OPENAI_API_KEY`** / hybrid embeddings, **`LAYERS_EMBEDDING_TIMEOUT_MS`**, etc.
+**Revision:** Phase 5 (**optional HTTP** on loopback) in **`layers` v0.6.x** (see §10). Run **`layers v1 serve`** (default **`127.0.0.1:7847`**) — **`POST /v1/retrieve`**, **`POST /v1/record`**, etc., same JSON bodies as CLI stdin; **`GET /v1/health`** (**`POST /v1/health`** → 405). Request body cap via **`LAYERS_HTTP_MAX_BODY_BYTES`**. Phase 4 still applies: **`LAYERS_OPENAI_API_KEY`** / hybrid embeddings, **`LAYERS_EMBEDDING_TIMEOUT_MS`**, etc.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -182,6 +182,7 @@ Environment:
 - `LAYERS_EMBEDDING_TIMEOUT_MS` — embed request timeout in ms (default **60000**, max **600000**).
 - `LAYERS_HTTP_HOST` / `LAYERS_HTTP_PORT` — HTTP bind (defaults **`127.0.0.1`** / **`7847`**); override CLI: `layers v1 serve --host=… --port=…`.
 - `LAYERS_HTTP_ALLOW_REMOTE` — set to **`1`** or **`true`** to allow binding a **non-loopback** host (e.g. `0.0.0.0`); otherwise only **`127.0.0.1`**, **`::1`**, **`localhost`** are accepted.
+- `LAYERS_HTTP_MAX_BODY_BYTES` — max JSON body size per request (default **4 MiB**, max **32 MiB**); larger bodies get **413** `PAYLOAD_TOO_LARGE`.
 
 ### 7.2 CLI commands (normative v1 sketch)
 
@@ -195,7 +196,7 @@ Environment:
 | `layers v1 import-ralph-memory` | (optional path) | `ImportResponse` JSON | Migrate `.ralph-memory.json` |
 | `layers v1 health` | — | `{ "ok": true, "version": "..." }` | Probe |
 
-**HTTP (mirror CLI):** `POST` with **JSON body** = stdin payload for the matching CLI command. **`GET /v1/health`** returns the same shape as **`layers v1 health`**. Default **loopback-only** bind; see env above.
+**HTTP (mirror CLI):** `POST` with **JSON body** = stdin payload for the matching CLI command. **`GET /v1/health`** returns the same shape as **`layers v1 health`**; **`POST /v1/health`** is **405**. Default **loopback-only** bind; see env above. Import **`memoryFile`** must be a **relative path under `projectRoot`** (no absolute paths, no `..`).
 
 | HTTP | Body (same as CLI stdin) |
 |------|--------------------------|

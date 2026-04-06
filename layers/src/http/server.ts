@@ -17,12 +17,68 @@ import {
 } from "../v1/handlers.js";
 import type { HttpServeOptions } from "./parseOptions.js";
 
-function readBody(req: IncomingMessage): Promise<string> {
+const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+function maxBodyBytes(env: NodeJS.ProcessEnv): number {
+  const raw = env.LAYERS_HTTP_MAX_BODY_BYTES?.trim();
+  if (!raw) {
+    return DEFAULT_MAX_BODY_BYTES;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    return DEFAULT_MAX_BODY_BYTES;
+  }
+  return Math.min(n, 32 * 1024 * 1024);
+}
+
+function readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(c as Buffer));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    let total = 0;
+    let finished = false;
+
+    const failTooLarge = (): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      const err = Object.assign(new Error("Request body exceeds maximum size"), {
+        code: "PAYLOAD_TOO_LARGE",
+        statusCode: 413,
+      });
+      reject(err);
+    };
+
+    req.on("data", (c) => {
+      if (finished) {
+        return;
+      }
+      const chunk = c as Buffer;
+      total += chunk.length;
+      if (total > maxBytes) {
+        failTooLarge();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (finished) {
+        return;
+      }
+      if (total > maxBytes) {
+        failTooLarge();
+        return;
+      }
+      finished = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (err) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      reject(err);
+    });
   });
 }
 
@@ -42,7 +98,6 @@ const ROUTES: Record<
     env: NodeJS.ProcessEnv
   ) => Promise<Record<string, unknown>> | Record<string, unknown>
 > = {
-  "/v1/health": async () => handleHealth(),
   "/v1/retrieve": async (body, env) =>
     handleRetrieve(body as RetrieveRequest, env) as Promise<Record<string, unknown>>,
   "/v1/record": async (body, env) => handleRecord(body as RecordRequest, env),
@@ -54,12 +109,30 @@ const ROUTES: Record<
 
 export function createLayersHttpServer(env: NodeJS.ProcessEnv): Server {
   return createServer(async (req, res) => {
+    const cleanupRequest = (): void => {
+      try {
+        req.destroy();
+      } catch {
+        /* ignore */
+      }
+    };
     try {
       const url = req.url?.split("?")[0] || "";
       const method = req.method || "";
 
       if (url === "/v1/health" && method === "GET") {
         sendJson(res, 200, handleHealth());
+        return;
+      }
+
+      if (url === "/v1/health" && method === "POST") {
+        sendJson(res, 405, {
+          ok: false,
+          error: {
+            code: "METHOD_NOT_ALLOWED",
+            message: "Use GET for /v1/health",
+          },
+        });
         return;
       }
 
@@ -82,7 +155,7 @@ export function createLayersHttpServer(env: NodeJS.ProcessEnv): Server {
         return;
       }
 
-      const raw = await readBody(req);
+      const raw = await readBody(req, maxBodyBytes(env));
       let parsed: unknown = {};
       if (raw.trim()) {
         try {
@@ -101,8 +174,25 @@ export function createLayersHttpServer(env: NodeJS.ProcessEnv): Server {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const code = errorCodeFrom(e, "INTERNAL_ERROR");
-      const status = code === "INVALID_REQUEST" ? 400 : code === "NOT_FOUND" ? 404 : 500;
+      const fromErr =
+        e && typeof e === "object" && "statusCode" in e
+          ? (e as { statusCode: unknown }).statusCode
+          : undefined;
+      const statusFromError =
+        typeof fromErr === "number" && fromErr >= 400 && fromErr < 600 ? fromErr : undefined;
+      const status =
+        statusFromError ??
+        (code === "INVALID_REQUEST"
+          ? 400
+          : code === "NOT_FOUND"
+            ? 404
+            : code === "PAYLOAD_TOO_LARGE"
+              ? 413
+              : 500);
       sendJson(res, status, { ok: false, error: { code, message: msg } });
+      if (code === "PAYLOAD_TOO_LARGE") {
+        cleanupRequest();
+      }
     }
   });
 }

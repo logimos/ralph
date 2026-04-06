@@ -46,7 +46,7 @@ Same JSON bodies as CLI stdin, via **`POST`**:
 | `/v1/compact`             | `CompactRequest`           |
 | `/v1/import-ralph-memory` | `ImportRalphMemoryRequest` |
 
-**`GET /v1/health`** — same JSON as `v1 health`.
+**`GET /v1/health`** — same JSON as `v1 health` (**`POST /v1/health`** → **405**).
 
 Start (default **`127.0.0.1:7847`**):
 
@@ -54,7 +54,10 @@ Start (default **`127.0.0.1:7847`**):
 node layers/dist/cli/main.js v1 serve
 # optional: --host=127.0.0.1 --port=7847
 # env: LAYERS_HTTP_HOST, LAYERS_HTTP_PORT, LAYERS_HTTP_ALLOW_REMOTE=1 for non-loopback
+# LAYERS_HTTP_MAX_BODY_BYTES — max JSON body (default 4 MiB, max 32 MiB)
 ```
+
+For **`import-ralph-memory`**, `memoryFile` must stay **under `projectRoot`** (relative path; no `..` or absolute paths).
 
 **Phase 1 — record** (stdin JSON, see `docs/LAYERS_SPEC.md` §7.3):
 
