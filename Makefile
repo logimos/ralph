@@ -1,4 +1,4 @@
-.PHONY: build install install-local run clean test help jq-tested jq-untested jq-status release-major release-minor release-patch release
+.PHONY: build install install-local run clean test layers-test layers-build help jq-tested jq-untested jq-status release-major release-minor release-patch release
 
 # Variables
 BINARY_NAME=ralph
@@ -10,6 +10,9 @@ GO_TEST=$(GO_CMD) test
 GO_FMT=$(GO_CMD) fmt
 GO_VET=$(GO_CMD) vet
 GO_MOD=$(GO_CMD) mod
+# Exclude npm packages under node_modules/ (e.g. flatted) from Go tool runs
+GO_LIST_PACKAGES := $(shell go list ./... | grep -v '/node_modules/')
+GO_TEST_PACKAGES := $(GO_LIST_PACKAGES)
 
 # Version management
 # Try to get version from git tag, strip any suffix like -dirty, -1-g1234567, etc.
@@ -64,15 +67,27 @@ run:
 	fi
 	./$(BINARY_NAME) -iterations $(ITERATIONS) $(ARGS)
 
-## test: Run tests
+## test: Run Go tests (Layers: make layers-test)
 test:
 	@echo "Running tests..."
-	$(GO_TEST) -v ./...
+	$(GO_TEST) -v $(GO_TEST_PACKAGES)
+
+## layers-build: Build the Layers (TypeScript) CLI
+layers-build:
+	@echo "Building layers..."
+	npm run build -w layers
+
+## layers-test: Lint, format check, and test Layers
+layers-test: layers-build
+	@echo "Running layers checks..."
+	npm run lint -w layers
+	npm run format:check -w layers
+	npm run test -w layers
 
 ## test-coverage: Run tests with coverage report
 test-coverage:
 	@echo "Running tests with coverage..."
-	$(GO_TEST) -v -coverprofile=coverage.out ./...
+	$(GO_TEST) -v -coverprofile=coverage.out $(GO_TEST_PACKAGES)
 	@echo ""
 	@echo "=== Coverage Summary ==="
 	$(GO_CMD) tool cover -func=coverage.out
@@ -88,12 +103,12 @@ test-coverage-html: test-coverage
 ## fmt: Format Go code
 fmt:
 	@echo "Formatting code..."
-	$(GO_FMT) ./...
+	$(GO_FMT) $(GO_LIST_PACKAGES)
 
 ## vet: Run go vet
 vet:
 	@echo "Running go vet..."
-	$(GO_VET) ./...
+	$(GO_VET) $(GO_LIST_PACKAGES)
 
 ## lint: Run fmt and vet
 lint: fmt vet
@@ -217,7 +232,8 @@ help:
 	@echo "  make run ITERATIONS=5                         # Run with 5 iterations"
 	@echo "  make run ITERATIONS=3 ARGS='-verbose'        # Run with verbose output"
 	@echo "  make run ITERATIONS=3 ARGS='-agent cursor-agent -verbose'  # Run with custom options"
-	@echo "  make test                                     # Run tests"
+	@echo "  make test                                     # Run Go tests"
+	@echo "  make layers-test                              # Build, lint, test Layers (TS)"
 	@echo "  make lint                                     # Format and vet code"
 	@echo "  make clean                                    # Remove build artifacts"
 	@echo "  make jq-tested                                # List tested features"

@@ -290,9 +290,9 @@ docs/
 
 ### Phase 0 — Scaffold
 
-- [ ] Add `layers/` with **Node + TypeScript**, `pnpm` or `npm`, strict TS, lint/format.
-- [ ] `layers v1 health` CLI.
-- [ ] Document **Node version** in `layers/README.md`.
+- [x] Add `layers/` with **Node + TypeScript**, npm workspace, strict TS, ESLint + Prettier.
+- [x] `layers v1 health` CLI — JSON on stdout; **version** read from `layers/package.json`.
+- [x] Document **Node version** in `layers/README.md`; tests (**Vitest**), `make layers-test`, CI **`.github/workflows/layers.yml`**.
 
 ### Phase 1 — Storage + import
 
