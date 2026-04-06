@@ -1,0 +1,72 @@
+[
+    {
+        "id": 1,
+        "category": "setup",
+        "description": "Initialize project with basic structure and configuration files",
+        "steps": [
+            "Create project root directory",
+            "Initialize package.json or equivalent",
+            "Add basic README.md with project description",
+            "Set up .gitignore file"
+        ],
+        "expected_output": "Project structure exists with basic configuration files",
+        "tested": false
+    },
+    {
+        "id": 2,
+        "category": "feature",
+        "description": "Implement user authentication system",
+        "steps": [
+            "Create user model/schema",
+            "Implement registration endpoint",
+            "Implement login endpoint with JWT tokens",
+            "Add password hashing and validation",
+            "Create authentication middleware"
+        ],
+        "expected_output": "Users can register and login; protected routes require valid JWT tokens",
+        "tested": false
+    },
+    {
+        "id": 3,
+        "category": "feature",
+        "description": "Add API documentation with OpenAPI/Swagger",
+        "steps": [
+            "Install OpenAPI documentation library",
+            "Define API schema for all endpoints",
+            "Set up Swagger UI endpoint",
+            "Add request/response examples",
+            "Document authentication requirements"
+        ],
+        "expected_output": "API documentation accessible at /docs endpoint with interactive Swagger UI",
+        "tested": false
+    },
+    {
+        "id": 4,
+        "category": "testing",
+        "description": "Add unit tests for core functionality",
+        "steps": [
+            "Set up testing framework",
+            "Write tests for authentication module",
+            "Write tests for API endpoints",
+            "Configure test coverage reporting",
+            "Add tests to CI pipeline"
+        ],
+        "expected_output": "Test suite runs successfully with >80% code coverage",
+        "tested": false
+    },
+    {
+        "id": 5,
+        "category": "infra",
+        "description": "Set up database migrations and seeding",
+        "steps": [
+            "Choose migration tool (e.g., Prisma, TypeORM)",
+            "Create initial database schema",
+            "Set up migration scripts",
+            "Create seed data script",
+            "Document database setup process"
+        ],
+        "expected_output": "Database migrations run successfully; seed data populates initial records",
+        "tested": false
+    }
+]
+
