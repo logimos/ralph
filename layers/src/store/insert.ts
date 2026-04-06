@@ -13,6 +13,8 @@ export type NewMemoryInput = {
   createdAt?: string;
   updatedAt?: string;
   legacyId?: string | null;
+  /** Optional precomputed embedding (e.g. from tests); stored as Float32 bytes */
+  embedding?: number[] | null;
 };
 
 export type InsertedMemory = {
@@ -53,9 +55,14 @@ export function insertMemory(db: Database.Database, input: NewMemoryInput): Inse
 
   const legacyId = input.legacyId?.trim() || null;
 
+  let embeddingBlob: Buffer | null = null;
+  if (input.embedding !== undefined && input.embedding !== null && input.embedding.length > 0) {
+    embeddingBlob = Buffer.from(Float32Array.from(input.embedding).buffer);
+  }
+
   const stmt = db.prepare(`
-    INSERT INTO memories (id, type, content, category, feature_id, source, created_at, updated_at, legacy_id)
-    VALUES (@id, @type, @content, @category, @feature_id, @source, @created_at, @updated_at, @legacy_id)
+    INSERT INTO memories (id, type, content, category, feature_id, source, created_at, updated_at, legacy_id, embedding)
+    VALUES (@id, @type, @content, @category, @feature_id, @source, @created_at, @updated_at, @legacy_id, @embedding)
   `);
 
   stmt.run({
@@ -68,6 +75,7 @@ export function insertMemory(db: Database.Database, input: NewMemoryInput): Inse
     created_at: createdAt,
     updated_at: updatedAt,
     legacy_id: legacyId,
+    embedding: embeddingBlob,
   });
 
   return {
