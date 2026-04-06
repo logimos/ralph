@@ -141,6 +141,60 @@ From Ralph’s perspective, each iteration is **stateless**: new process, new pr
 
 ---
 
+## 6.5 Two-layer memory: OpenClaw (oc-spec) vs Ralph
+
+The `oc-spec/` folder documents **OpenClaw’s** persistent memory architecture. It is useful as a **reference pattern** for token-efficient continuity—not as something to copy line-for-line in Go, but as a **separation of concerns** Ralph can emulate.
+
+### 6.5.1 What OpenClaw specifies (summary from oc-spec)
+
+| Layer | Role | Storage / behavior (per `spec.md`) |
+|--------|------|-------------------------------------|
+| **Layer A — Session history** | **Authoritative** append-only record of what happened in conversation | `sessions.json` metadata + `<sessionId>.jsonl` transcripts; appends go through **SessionManager** semantics (ordering/parent chain) for **history + compaction** correctness |
+| **Layer B — Semantic memory** | **Retrieved** facts, not full history | `memory-core`: markdown files, SQLite index with **vector + FTS**, **hybrid merge** (`spec.algorithms.md`: vector + keyword, temporal decay, **MMR** for diversity), **FTS-only fallback** when embeddings fail |
+
+**Retrieval** (`memory_search`): normalize query → optional embeddings → FTS → merge with weights → threshold + **top‑k** — so the model sees **a small relevant slice**, not the entire transcript.
+
+**Maintenance** on Layer A: locks, atomic writes, prune/archive, **disk budget** — history is **durable** but **bounded**.
+
+### 6.5.2 What Ralph does today
+
+| Artifact | Acts like OpenClaw… | Token / clarity issue |
+|----------|---------------------|------------------------|
+| **`progress.txt`** | Layer A–ish (append-only log) | **Unbounded** growth; included via `@progress` → **full file** tends to land in context → **killer for tokens** as runs lengthen. |
+| **`.ralph-memory.json`** | Partial Layer B (structured entries) | **Flat list**; `BuildPromptContext` injects top‑**N** by simple **relevance score** (`internal/memory/memory.go`) — better than raw progress, but **no hybrid search**, no chunking, no MMR, no embedding fallback path. |
+| **`plan.json`** | Workflow truth | Usually must stay in context in some form; can be **projected** (see §7.4) to shrink. |
+
+Ralph iterations are **stateless subprocesses** (§6.3), so there is **no** transcript compaction loop inside Ralph like OpenClaw’s **preflight compaction** — unless we **build** a deliberate “summarize / rotate progress” step.
+
+### 6.5.3 Mapping OpenClaw ideas onto Ralph (without losing instruction clarity)
+
+**Principle:** Keep **one authoritative, append-only trail** for audit/debug (like OpenClaw’s JSONL), but **stop feeding that entire trail** into the agent every time. Feed **(1) short working memory + (2) retrieved facts**, like OpenClaw’s A/B split.
+
+| OpenClaw idea | Ralph-oriented analogue |
+|----------------|-------------------------|
+| Layer A authoritative + compaction | Keep **`progress-full.txt` or JSONL** as archive; maintain **`progress-context.txt`** (or generated block) that is **only** the last *k* entries or a **rolling summary** + pointer to git SHAs. Prompt references **`@`** the **small** file. |
+| Layer B semantic + hybrid search | Evolve **`.ralph-memory.json`** (or split **`MEMORY.md` + index**): retrieval by **feature id / category / keywords**; optional **SQLite FTS** or **bleve**/embedded search in Go; optional embeddings later. Always **cap** injected lines (`maxEntries` already exists — expose and tune per env). |
+| Transcript invariants | Ralph could require **structured append** (timestamp, feature_id, summary line) so **deterministic** compaction can run without an LLM, or **one** periodic summarization call replaces 50 raw paragraphs. |
+| MMR / diversity | When selecting memories, avoid **10 near-duplicate** “use TypeScript” lines — prefer diverse entry types (decision vs convention). |
+| Disk budget | **Rotate** or **archive** `progress.txt` when size > N KB; keep **tail** in hot path. |
+
+**Clarity of instruction:** The **prompt rules** (single feature, tests, commit, `COMPLETE`) stay in **`BuildIterationPrompt`** unchanged. What shrinks is **evidence / history**, not the **task contract**. Optionally add one line: “Authoritative detail is in `progress-archive.*`; work from the summary below.”
+
+### 6.5.4 Cheap wins vs heavier engineering
+
+**Cheap (mostly policy + files):**
+
+- Stop `@`-including **unbounded** `progress.txt`; generate **`progress-last.md`** (last *k* lines or last 2k tokens equivalent).
+- Pin **`memory_retention`** and **lower default** injected memories; tie **`BuildPromptContext(category, …)`** to **current feature’s category** once `extractCurrentFeatureFromPlans` is aligned with prompt priority (§4.1).
+- Ask the agent to append **one structured line** per iteration (`FEATURE=3 STATUS=done SUMMARY=…`) so Ralph can **parse** and **summarize** without loading prose.
+
+**Heavier (OpenClaw parity in spirit):**
+
+- **Embedded FTS** over memory entries + progress summaries for **query = current feature description**.
+- **Compaction job**: after each iteration or every *n* steps, rewrite “working summary” via **rules** or **single** LLM call **only when** size exceeds threshold (OpenClaw’s preflight compaction analogue).
+
+---
+
 ## 7. Enhancement directions (focused on the loop)
 
 Below are **actionable** directions ordered roughly by impact on loop quality and cost. They are architectural/product choices, not calendar estimates.
@@ -217,20 +271,45 @@ The prompt asks for a **git commit per feature**. The loop does not verify commi
 - Prefer **absolute paths** only where needed; ensure redundant huge files are not referenced in prompts.
 - Consider a **`--prompt-profile minimal`** that omits nonessential instructions for small iterations.
 
+### 7.10 Split “history” from “working context” (OpenClaw Layer A pattern)
+
+- **Archive** full append-only history to e.g. `progress-archive.jsonl` or rotate `progress.txt` by size with numbered parts.
+- Point **`@`** in the iteration prompt at a **small** file: `progress-context.txt` / `progress-last.md` containing only **last N entries**, a **rolling summary** block, and/or **pointers** (commit SHAs, PR links).
+- Optionally run a **compaction** step when `progress-context` exceeds a byte or line threshold (rule-based truncation first; **optional** one LLM summarization call as last resort).
+
+**Why:** Preserves **auditability** (full history on disk) while **capping** what Cursor loads every iteration — same separation as OpenClaw’s **transcript + compaction** story.
+
+### 7.11 Strengthen Layer B memory retrieval (OpenClaw Layer B pattern)
+
+- Pass **category from the current plan item** into `BuildPromptContext` instead of always using `""` in `runIterations` (so memories match **infra** vs **ui** work).
+- Add **deduplication** or **MMR-style** selection: penalize near-duplicate entry text so 10 memories do not repeat one convention.
+- Optional **keyword / FTS** index over memory entries (embedded SQLite or similar) with **query = feature description + steps** and **top‑k** with a **min score** threshold — mirrors OpenClaw’s **hybrid retrieval + fallback** without requiring embeddings on day one.
+
+**Why:** Keeps **instruction text** in the prompt full-size while **facts** stay **small and relevant**.
+
+### 7.12 Structured progress lines for machine-safe compaction
+
+- Define a **one-line schema** (or JSON line in JSONL) per iteration: feature id, status, commit hash, short summary.
+- Teach the prompt: “Append **both** a human paragraph **and** one machine line matching …”
+
+**Why:** Lets Ralph **truncate** or **rebuild** `progress-context` **without** guessing from prose — reducing reliance on extra LLM calls for compaction.
+
 ---
 
 ## 8. Summary
 
-The Ralph loop is a **simple, robust pattern**: repeated **agent subprocess** calls with **file-backed state**. Its strengths are **transparency** and **composability** (memory, nudges, scope, replan). Its main weaknesses for optimization are **context growth**, **soft verification** of completion, **priority semantics drift**, and **unstructured progress**. The interaction with **Cursor** is entirely through the **CLI and `@` file references**, so **token-efficient prompts and artifacts** are the highest-leverage improvements to the loop itself.
+The Ralph loop is a **simple, robust pattern**: repeated **agent subprocess** calls with **file-backed state**. Its strengths are **transparency** and **composability** (memory, nudges, scope, replan). Its main weaknesses for optimization are **context growth** (especially **`progress.txt` via `@`**, which behaves like an **unbounded OpenClaw Layer A** fed whole into every turn), **soft verification** of completion, **priority semantics drift**, and **unstructured progress**. OpenClaw’s **two-layer** model (bounded **history + compaction** + **retrieved semantic memory**) maps cleanly onto Ralph as **split progress files + improved `.ralph-memory` retrieval** — shrinking **evidence**, not **task instructions**. The interaction with **Cursor** is entirely through the **CLI and `@` file references**, so **token-efficient prompts and artifacts** are the highest-leverage improvements to the loop itself.
 
 ---
 
 ## 9. Suggested implementation order (technical only)
 
 1. **Verify gate** (typecheck/test in Ralph) + structured capture of results.  
-2. **Priority field** + consistent feature selection + prompt alignment.  
-3. **Structured iteration log** + rolling summary / plan projection for prompts.  
-4. **Replan trigger** tuning and incremental replan path.  
-5. **Multi-agent** integration or config cleanup.
+2. **Split progress for context** (§7.10): `@` only **bounded** `progress-context` + archive full history — fastest token win for long loops.  
+3. **Memory retrieval** (§7.11): category-aware `BuildPromptContext` + dedup/MMR-lite + optional FTS.  
+4. **Priority field** + consistent feature selection + prompt alignment.  
+5. **Structured iteration lines** (§7.12) + plan projection / rolling summary automation.  
+6. **Replan trigger** tuning and incremental replan path.  
+7. **Multi-agent** integration or config cleanup.
 
-This ordering front-loads **deterministic correctness** and **cost control** before adding **parallelism** or more **LLM-heavy** behaviors.
+This ordering front-loads **deterministic correctness**, **context caps**, and **retrieval quality** before **parallelism** or heavier **LLM compaction** passes.
