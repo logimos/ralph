@@ -1,10 +1,13 @@
+/** Aligns with Porter unicode61 tokenizer: letters, marks, numbers (not ASCII-only). */
+const TOKEN_SPLIT = /[^\p{L}\p{M}\p{N}]+/u;
+
 /**
- * Build a safe FTS5 MATCH string from free text: alphanumeric tokens, AND-joined.
+ * Build a safe FTS5 MATCH string from free text: tokens AND-joined (quoted for FTS5).
  */
 export function buildFtsMatchQuery(normalizedText: string): string | null {
   const words = normalizedText
     .toLowerCase()
-    .split(/[^a-z0-9]+/u)
+    .split(TOKEN_SPLIT)
     .map((w) => w.trim())
     .filter((w) => w.length >= 2);
 

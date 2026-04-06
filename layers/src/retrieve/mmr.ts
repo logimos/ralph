@@ -20,10 +20,13 @@ export function wordJaccard(a: string, b: string): number {
   return union === 0 ? 0 : inter / union;
 }
 
+/** Keep in sync with ftsQuery TOKEN_SPLIT (unicode letters / marks / numbers). */
+const TOKEN_SPLIT = /[^\p{L}\p{M}\p{N}]+/u;
+
 function tokenize(s: string): Set<string> {
   const words = s
     .toLowerCase()
-    .split(/[^a-z0-9]+/u)
+    .split(TOKEN_SPLIT)
     .map((w) => w.trim())
     .filter((w) => w.length >= 2);
   return new Set(words);
@@ -35,14 +38,15 @@ export type MmrItem = { id: string; relevance: number; text: string };
  * MMR selection: diversity vs relevance (lambda higher = more relevance).
  */
 export function mmrSelect(items: MmrItem[], k: number, lambda: number): MmrItem[] {
-  if (items.length === 0 || k <= 0) {
+  const kInt = Number.isFinite(k) ? Math.min(items.length, Math.max(0, Math.floor(k))) : 0;
+  if (items.length === 0 || kInt === 0) {
     return [];
   }
   const lam = Math.min(1, Math.max(0, lambda));
   const pool = [...items];
   const selected: MmrItem[] = [];
 
-  while (selected.length < k && pool.length > 0) {
+  while (selected.length < kInt && pool.length > 0) {
     let bestIdx = 0;
     let bestScore = -Infinity;
     for (let i = 0; i < pool.length; i++) {

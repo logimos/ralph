@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 2 (`v1 retrieve`, FTS-only) implemented in **`layers` v0.3.0** (see §10).
+**Revision:** Phase 2 (`v1 retrieve`, FTS-only) in **`layers` v0.3.x** (see §10). Retrieve options (`topK`, `maxTokens`, `mmrLambda`) are **normalized** (clamped / integer / finite) in code to avoid invalid SQL or runaway context size.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -305,7 +305,8 @@ docs/
 
 ### Phase 2 — Retrieve (FTS-only)
 
-- [x] `layers v1 retrieve`: stdin JSON `RetrieveRequest` (§7.3) — FTS5 `bm25()` with Porter tokenizer; category + featureId **boost**; **MMR-lite** (word Jaccard) for diversity; **maxTokens** trims `contextBlock`.
+- [x] `layers v1 retrieve`: stdin JSON `RetrieveRequest` (§7.3) — FTS5 `bm25()` with Porter tokenizer; category + featureId **boost**; **MMR-lite** (word Jaccard) for diversity; **maxTokens** trims `contextBlock` (word-count budget; no minimum that violates the cap).
+- [x] **Option guards**: `topK` / `poolSize` / `maxTokens` / `mmrLambda` validated; FTS **MATCH** tokenization uses Unicode letter/number classes to align with `unicode61`.
 - [x] **`contextBlock`** uses `[MEMORY CONTEXT]` … `[END MEMORY CONTEXT]` (§5.3).
 - [x] Tests: unit (`ftsQuery`, `mmr`, `retrieve`) + CLI integration for `retrieve`.
 

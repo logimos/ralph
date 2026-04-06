@@ -1,5 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -44,6 +43,30 @@ describe("retrieveMemories", () => {
       expect(contextBlock).toContain("[MEMORY CONTEXT]");
       expect(contextBlock).toContain("[END MEMORY CONTEXT]");
       expect(contextBlock.toLowerCase()).toContain("sqlite");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("respects maxTokens on contextBlock (word budget)", () => {
+    dir = mkdtempSync(join(tmpdir(), "layers-retrieve-tok-"));
+    mkdirSync(join(dir, ".layers"), { recursive: true });
+    const db = openDatabase(join(dir, ".layers"));
+    try {
+      const longContent = Array.from({ length: 80 }, (_, i) => `w${i}`).join(" ");
+      insertMemory(db, {
+        type: "context",
+        content: longContent,
+        source: "agent",
+      });
+      const maxTok = 35;
+      const { contextBlock } = retrieveMemories(
+        db,
+        { text: "w0 w1", category: null, featureId: 0 },
+        { topK: 3, maxTokens: maxTok, mmrLambda: 1 }
+      );
+      const wc = contextBlock.trim().length === 0 ? 0 : contextBlock.trim().split(/\s+/).length;
+      expect(wc).toBeLessThanOrEqual(maxTok);
     } finally {
       db.close();
     }

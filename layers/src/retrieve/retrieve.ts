@@ -1,6 +1,12 @@
 import type Database from "better-sqlite3";
 import { buildFtsMatchQuery, normalizeQueryText } from "./ftsQuery.js";
 import { mmrSelect, type MmrItem } from "./mmr.js";
+import {
+  computePoolSize,
+  normalizeMaxTokens,
+  normalizeMmrLambda,
+  normalizeTopK,
+} from "./options.js";
 
 export type RetrieveQueryInput = {
   text: string;
@@ -31,10 +37,10 @@ export function retrieveMemories(
   query: RetrieveQueryInput,
   options: RetrieveOptionsInput
 ): { memories: RetrievedMemory[]; contextBlock: string; meta: RetrieveMeta } {
-  const topK = options.topK ?? 10;
-  const maxTokens = options.maxTokens ?? 2000;
-  const mmrLambda = options.mmrLambda ?? 0.5;
-  const poolSize = Math.min(50, Math.max(topK * 4, topK));
+  const topK = normalizeTopK(options.topK);
+  const maxTokens = normalizeMaxTokens(options.maxTokens);
+  const mmrLambda = normalizeMmrLambda(options.mmrLambda);
+  const poolSize = computePoolSize(topK);
 
   const qText = normalizeQueryText(query.text);
   const ftsMatch = buildFtsMatchQuery(qText);
@@ -123,6 +129,11 @@ export function retrieveMemories(
   };
 }
 
+function wordCount(s: string): number {
+  const t = s.trim();
+  return t.length === 0 ? 0 : t.split(/\s+/).length;
+}
+
 function buildContextBlock(
   memories: RetrievedMemory[],
   maxTokens: number
@@ -135,20 +146,29 @@ function buildContextBlock(
     const label = m.type.toUpperCase();
     return `- [${label}] ${m.content}`;
   });
-  let body = lines.join("\n");
-  let truncated = false;
-  const approxTokens = (header + body + footer).split(/\s+/).length;
-  if (approxTokens > maxTokens && memories.length > 0) {
-    const budget = Math.max(50, maxTokens - 20);
-    const words = body.split(/\s+/);
-    body = words.slice(0, budget).join(" ");
-    if (words.length > budget) {
-      truncated = true;
-      body += "\n…";
+  const fullBody = memories.length === 0 ? "(no matching memories)" : lines.join("\n");
+  const fullBlock = header + fullBody + footer;
+
+  if (wordCount(fullBlock) <= maxTokens) {
+    return { block: fullBlock, truncated: false };
+  }
+
+  const bodyWords = fullBody.trim().length === 0 ? [] : fullBody.trim().split(/\s+/);
+  const marker = "\n…";
+
+  for (let n = bodyWords.length - 1; n >= 0; n--) {
+    const bodyPart = bodyWords.slice(0, n).join(" ") + marker;
+    const block = header + bodyPart + footer;
+    if (wordCount(block) <= maxTokens) {
+      return { block, truncated: true };
     }
   }
-  if (memories.length === 0) {
-    body = "(no matching memories)";
-  }
-  return { block: header + body + footer, truncated };
+
+  const allWords = fullBlock.trim().split(/\s+/);
+  const clipped = allWords.slice(0, Math.max(0, maxTokens)).join(" ");
+  const needEllipsis = allWords.length > maxTokens;
+  return {
+    block: needEllipsis ? `${clipped}\n…` : clipped,
+    truncated: needEllipsis || wordCount(fullBlock) > maxTokens,
+  };
 }

@@ -12,6 +12,13 @@ describe("buildFtsMatchQuery", () => {
     expect(buildFtsMatchQuery("")).toBeNull();
     expect(buildFtsMatchQuery("a b")).toBeNull();
   });
+
+  it("keeps non-ASCII letters for unicode61-aligned MATCH", () => {
+    const q = buildFtsMatchQuery("café münchen");
+    expect(q).not.toBeNull();
+    expect(q).toContain("café");
+    expect(q).toContain("münchen");
+  });
 });
 
 describe("normalizeQueryText", () => {

@@ -14,4 +14,13 @@ describe("mmrSelect", () => {
     expect(ids).toContain("1");
     expect(ids).toContain("3");
   });
+
+  it("floors non-integer k and returns empty for NaN k", () => {
+    const items = [
+      { id: "a", relevance: 1, text: "x" },
+      { id: "b", relevance: 0.5, text: "y" },
+    ];
+    expect(mmrSelect(items, 1.9, 1)).toHaveLength(1);
+    expect(mmrSelect(items, NaN, 1)).toHaveLength(0);
+  });
 });
