@@ -143,6 +143,8 @@ From Ralph’s perspective, each iteration is **stateless**: new process, new pr
 
 ## 6.5 Two-layer memory: OpenClaw (oc-spec) vs Ralph
 
+**Implementation direction:** Memory for Ralph is specified as the TypeScript app **`layers/`** with a versioned **Ralph ↔ Layers contract**. See **[`LAYERS_SPEC.md`](LAYERS_SPEC.md)** (phased plan, CLI/HTTP API, cross-references to oc-spec and current Ralph memory).
+
 The `oc-spec/` folder documents **OpenClaw’s** persistent memory architecture. It is useful as a **reference pattern** for token-efficient continuity—not as something to copy line-for-line in Go, but as a **separation of concerns** Ralph can emulate.
 
 ### 6.5.1 What OpenClaw specifies (summary from oc-spec)

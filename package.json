@@ -1,0 +1,9 @@
+{
+  "name": "ralph-workspace",
+  "private": true,
+  "description": "Go Ralph CLI + TypeScript Layers memory service",
+  "workspaces": ["layers"],
+  "scripts": {
+    "layers": "npm run -w layers"
+  }
+}
