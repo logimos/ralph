@@ -4,9 +4,41 @@ TypeScript service for **recording and retrieving** project memory for the [Ralp
 
 **[docs/LAYERS_SPEC.md](../docs/LAYERS_SPEC.md)**
 
+## Requirements
+
+- **Node.js 20+** (see `engines` in `package.json`)
+
+## Development
+
+From the **repository root** (npm workspaces):
+
+```bash
+npm ci
+npm run build -w layers
+npm run test -w layers
+npm run lint -w layers
+npm run format:check -w layers
+```
+
+Or use **Make**:
+
+```bash
+make layers-test
+```
+
+## CLI (Phase 0)
+
+After `npm run build -w layers`:
+
+```bash
+node layers/dist/cli/main.js v1 health
+```
+
+Response: JSON with `ok`, `version` (from `layers/package.json`), and `service: "layers"`.
+
 ## Status
 
-Scaffold only — implementation follows the phased plan in the spec (Phase 0 → Phase 6).
+**Phase 0** complete: TypeScript scaffold, strict build, ESLint, Prettier, Vitest, CI workflow, versioned health command. Later phases implement storage and retrieval per `docs/LAYERS_SPEC.md`.
 
 ## Quick links
 

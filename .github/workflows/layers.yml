@@ -1,0 +1,35 @@
+name: Layers
+
+on:
+  push:
+    branches: [ralph2, main, master]
+    paths:
+      - "layers/**"
+      - ".github/workflows/layers.yml"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    paths:
+      - "layers/**"
+      - ".github/workflows/layers.yml"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+  layers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Layers — lint, format, test
+        run: make layers-test
