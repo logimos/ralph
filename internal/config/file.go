@@ -78,6 +78,12 @@ type FileConfig struct {
 	AgentsFile       string `json:"agents_file,omitempty" yaml:"agents_file,omitempty"`             // Path to multi-agent config file
 	ParallelAgents   int    `json:"parallel_agents,omitempty" yaml:"parallel_agents,omitempty"`     // Max parallel agents
 	EnableMultiAgent bool   `json:"enable_multi_agent,omitempty" yaml:"enable_multi_agent,omitempty"` // Enable multi-agent mode
+
+	// Layers memory service (docs/LAYERS_SPEC.md)
+	LayersEnabled  bool   `json:"layers_enabled,omitempty" yaml:"layers_enabled,omitempty"`
+	LayersCommand  string `json:"layers_command,omitempty" yaml:"layers_command,omitempty"`
+	LayersURL      string `json:"layers_url,omitempty" yaml:"layers_url,omitempty"`
+	LayersDataDir  string `json:"layers_data_dir,omitempty" yaml:"layers_data_dir,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory

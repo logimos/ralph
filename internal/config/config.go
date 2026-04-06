@@ -69,24 +69,24 @@ type Config struct {
 	AddMemory       string // Add a manual memory entry (format: "type:content")
 	MemoryRetention int    // Number of days to retain memories (default: 90)
 	// Milestone-related configuration
-	ListMilestones  bool   // List all milestones with progress
-	ShowMilestone   string // Show features for a specific milestone
+	ListMilestones bool   // List all milestones with progress
+	ShowMilestone  string // Show features for a specific milestone
 	// Nudge-related configuration
-	NudgeFile    string // Path to nudge file (default: nudges.json)
-	Nudge        string // One-time inline nudge (format: "type:content")
-	ClearNudges  bool   // Clear all nudges
-	ShowNudges   bool   // Display current nudges
+	NudgeFile   string // Path to nudge file (default: nudges.json)
+	Nudge       string // One-time inline nudge (format: "type:content")
+	ClearNudges bool   // Clear all nudges
+	ShowNudges  bool   // Display current nudges
 	// Scope control configuration
 	ScopeLimit   int    // Max iterations per feature (0 = unlimited)
 	Deadline     string // Deadline duration (e.g., "1h", "30m", "2h30m")
 	ListDeferred bool   // List deferred features
 	// Replanning configuration
-	AutoReplan       bool   // Enable automatic replanning when triggers fire
-	Replan           bool   // Manually trigger replanning
-	ReplanStrategy   string // Replanning strategy: incremental, agent
-	ReplanThreshold  int    // Number of consecutive failures before replanning
-	ListVersions     bool   // List plan versions
-	RestoreVersion   int    // Restore a specific plan version
+	AutoReplan      bool   // Enable automatic replanning when triggers fire
+	Replan          bool   // Manually trigger replanning
+	ReplanStrategy  string // Replanning strategy: incremental, agent
+	ReplanThreshold int    // Number of consecutive failures before replanning
+	ListVersions    bool   // List plan versions
+	RestoreVersion  int    // Restore a specific plan version
 	// Validation configuration
 	Validate        bool // Run validations for all completed features
 	ValidateFeature int  // Validate a specific feature by ID
@@ -99,10 +99,15 @@ type Config struct {
 	DecomposeGoal string // Decompose a specific goal by ID
 	DecomposeAll  bool   // Decompose all pending goals
 	// Multi-agent configuration
-	AgentsFile     string // Path to multi-agent configuration file
-	ParallelAgents int    // Maximum number of agents to run in parallel
-	ListAgents     bool   // List configured agents
-	EnableMultiAgent bool // Enable multi-agent mode
+	AgentsFile       string // Path to multi-agent configuration file
+	ParallelAgents   int    // Maximum number of agents to run in parallel
+	ListAgents       bool   // List configured agents
+	EnableMultiAgent bool   // Enable multi-agent mode
+	// Layers (TypeScript memory service) — see docs/LAYERS_SPEC.md
+	LayersEnabled bool   // Use Layers retrieve/record for the iteration loop (instead of only flat JSON memory)
+	LayersCommand string // `layers` binary or e.g. "node path/to/layers/dist/cli/main.js" (default: layers on PATH)
+	LayersURL     string // If set, HTTP POST to this base URL (e.g. http://127.0.0.1:7847) instead of subprocess
+	LayersDataDir string // Optional data directory passed to Layers (request dataDir / env)
 }
 
 // New creates a new Config with default values
