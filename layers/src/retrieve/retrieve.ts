@@ -171,13 +171,14 @@ export async function retrieveMemories(
       }
 
       if (toEmbed.length > 0) {
+        const byId = new Map(ftsBoosted.map((b) => [b.row.id, b]));
         const texts = toEmbed.map((x) => x.content);
         const vectors = await embedder.embed(texts);
         for (let i = 0; i < toEmbed.length; i++) {
           const buf = Buffer.from(Float32Array.from(vectors[i]!).buffer);
           const id = toEmbed[i]!.id;
           updateStmt.run(buf, id);
-          const hit = ftsBoosted.find((x) => x.row.id === id);
+          const hit = byId.get(id);
           if (hit) {
             hit.row.embedding = buf;
           }

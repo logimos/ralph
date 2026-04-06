@@ -18,6 +18,9 @@ export function blobToFloat32Array(blob: Buffer | null): Float32Array | null {
   if (!blob || blob.length === 0) {
     return null;
   }
+  if (blob.length % 4 !== 0) {
+    return null;
+  }
   return new Float32Array(blob.buffer, blob.byteOffset, blob.length / 4);
 }
 

@@ -62,7 +62,7 @@ echo '{"projectRoot":"/abs/repo","query":{"text":"auth JWT","category":"feature"
 
 Response includes `contextBlock`, `memories`, and `meta` (`ftsOnly`, `truncated`, optional `embeddingModel`).
 
-**Hybrid embeddings (Phase 4):** set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`**. Without a key, retrieval is **FTS-only** (`meta.ftsOnly: true`). Optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`). Tune blend with `options.vectorWeight` / `options.textWeight` (defaults 0.55 / 0.45).
+**Hybrid embeddings (Phase 4):** set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`**. Without a key, retrieval is **FTS-only** (`meta.ftsOnly: true`). Optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`). **`LAYERS_EMBEDDING_TIMEOUT_MS`** caps embed HTTP calls (default 60000). Tune blend with `options.vectorWeight` / `options.textWeight` (defaults 0.55 / 0.45).
 
 **Phase 3 — run log + snapshot** (Layer A, §3.3 / §7):
 

@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 4 (optional **OpenAI embeddings** + hybrid retrieve) in **`layers` v0.5.x** (see §10). Set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`** for hybrid search; optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`). Without a key, **`v1 retrieve`** stays **FTS-only** (`meta.ftsOnly: true`). Embeddings are stored as **Float32 BLOB** on `memories.embedding` and filled lazily on retrieve.
+**Revision:** Phase 4 (optional **OpenAI embeddings** + hybrid retrieve) in **`layers` v0.5.x** (see §10). Set **`LAYERS_OPENAI_API_KEY`** or **`OPENAI_API_KEY`** for hybrid search; optional **`LAYERS_EMBEDDING_MODEL`** (default `text-embedding-3-small`) and **`LAYERS_EMBEDDING_TIMEOUT_MS`** (default 60000). Without a key, **`v1 retrieve`** stays **FTS-only** (`meta.ftsOnly: true`). Embeddings are stored as **Float32 BLOB** on `memories.embedding` and filled lazily on retrieve; invalid-length blobs are treated as missing.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -179,6 +179,7 @@ Environment:
 - `LAYERS_DATA_DIR` — default `.layers` under project root.
 - `LAYERS_OPENAI_API_KEY` or `OPENAI_API_KEY` — enables hybrid retrieval embeddings.
 - `LAYERS_EMBEDDING_MODEL` — OpenAI embedding model id (optional).
+- `LAYERS_EMBEDDING_TIMEOUT_MS` — embed request timeout in ms (default **60000**, max **600000**).
 
 ### 7.2 CLI commands (normative v1 sketch)
 
