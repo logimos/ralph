@@ -44,3 +44,34 @@ export type ErrorResponse = {
   ok: false;
   error: { code: string; message: string };
 };
+
+export type RetrieveRequest = {
+  projectRoot: string;
+  dataDir?: string;
+  query: {
+    text: string;
+    category?: string | null;
+    featureId?: number;
+  };
+  options?: {
+    topK?: number;
+    maxTokens?: number;
+    mmrLambda?: number;
+    embeddingFallbackOk?: boolean;
+  };
+};
+
+export type RetrieveResponse = {
+  ok: true;
+  contextBlock: string;
+  memories: Array<{
+    id: string;
+    type: string;
+    content: string;
+    score: number;
+  }>;
+  meta: {
+    ftsOnly: boolean;
+    truncated: boolean;
+  };
+};

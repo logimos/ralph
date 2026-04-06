@@ -53,10 +53,21 @@ echo '{"projectRoot":"/abs/repo"}' | node layers/dist/cli/main.js v1 import-ralp
 
 If stdin is omitted, set `LAYERS_PROJECT_ROOT` and optional path as first argument.
 
+**Phase 2 — retrieve** (FTS + MMR-lite, stdin `RetrieveRequest` §7.3):
+
+```bash
+echo '{"projectRoot":"/abs/repo","query":{"text":"auth JWT","category":"feature","featureId":2},"options":{"topK":8}}' \
+  | node layers/dist/cli/main.js v1 retrieve
+```
+
+Response includes `contextBlock` (Ralph-ready delimiters) and `memories` with scores. Embeddings are **not** used yet (`meta.ftsOnly` is always true until Phase 4).
+
 ## Status
 
 - **Phase 0**: scaffold, health, lint, tests, CI.
-- **Phase 1**: SQLite + FTS5, `v1 record`, `v1 import-ralph-memory` (idempotent). **Phase 2**: `retrieve` (hybrid search) per `docs/LAYERS_SPEC.md`.
+- **Phase 1**: SQLite + FTS5, `v1 record`, `v1 import-ralph-memory` (idempotent).
+- **Phase 2**: `v1 retrieve` — FTS ranking, category/feature boosts, MMR-lite, `contextBlock` + token budget.
+- **Next**: Phase 3 — run log + compact (`docs/LAYERS_SPEC.md`).
 
 ## Quick links
 

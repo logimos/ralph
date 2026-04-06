@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ImportRalphMemoryRequest, RecordRequest } from "../contracts/v1.js";
+import type { ImportRalphMemoryRequest, RecordRequest, RetrieveRequest } from "../contracts/v1.js";
 import { importRalphMemoryIntoDb, resolveMemoryFilePath } from "../import/ralphMemory.js";
 import { getPackageVersion } from "../version.js";
 import { insertMemory, type InsertedMemory } from "../store/insert.js";
 import { openDatabase } from "../store/open.js";
 import { effectiveDataDirOverride, resolveDataDir } from "../store/paths.js";
+import { retrieveMemories } from "../retrieve/retrieve.js";
 
 export type HealthResult = {
   ok: true;
@@ -38,6 +39,49 @@ export function runCli(
       service: "layers",
     };
     return { code: 0, stdout: `${JSON.stringify(body)}\n`, stderr: "" };
+  }
+
+  if (argv[0] === "v1" && argv[1] === "retrieve") {
+    try {
+      const req = parseStdinJson<RetrieveRequest>(stdin);
+      if (!req.projectRoot || typeof req.projectRoot !== "string") {
+        return jsonErr("INVALID_REQUEST", "retrieve: projectRoot is required");
+      }
+      if (!req.query || typeof req.query.text !== "string") {
+        return jsonErr("INVALID_REQUEST", "retrieve: query.text is required");
+      }
+      const root = resolve(req.projectRoot);
+      const dataDir = resolveDataDir(root, effectiveDataDirOverride(req.dataDir, env));
+      const db = openDatabase(dataDir);
+      try {
+        const q = req.query;
+        const { memories, contextBlock, meta } = retrieveMemories(
+          db,
+          {
+            text: q.text,
+            category: q.category ?? null,
+            featureId: typeof q.featureId === "number" ? q.featureId : 0,
+          },
+          {
+            topK: req.options?.topK,
+            maxTokens: req.options?.maxTokens,
+            mmrLambda: req.options?.mmrLambda,
+          }
+        );
+        const out = {
+          ok: true as const,
+          contextBlock,
+          memories,
+          meta,
+        };
+        return { code: 0, stdout: `${JSON.stringify(out)}\n`, stderr: "" };
+      } finally {
+        db.close();
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return jsonErr("RETRIEVE_FAILED", msg);
+    }
   }
 
   if (argv[0] === "v1" && argv[1] === "record") {
@@ -144,6 +188,7 @@ export function runCli(
 
   const stderr = `Usage:
   layers v1 health
+  layers v1 retrieve < stdin.json
   layers v1 record < stdin.json
   layers v1 import-ralph-memory [path/to/.ralph-memory.json] < stdin.json
      (stdin optional if LAYERS_PROJECT_ROOT is set; memory path defaults to <root>/.ralph-memory.json)

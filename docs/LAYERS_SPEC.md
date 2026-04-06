@@ -1,5 +1,7 @@
 # Layers — TypeScript memory service for Ralph
 
+**Revision:** Phase 2 (`v1 retrieve`, FTS-only) implemented in **`layers` v0.3.0** (see §10).
+
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
 **Related material:**
@@ -303,9 +305,9 @@ docs/
 
 ### Phase 2 — Retrieve (FTS-only)
 
-- [ ] `retrieve`: tokenize query + FTS + **top‑k** + **MMR-lite** on text similarity (cheap) or naive diversity by type.
-- [ ] Emit **`contextBlock`** matching Ralph-friendly delimiters.
-- [ ] Golden tests with fixture DB.
+- [x] `layers v1 retrieve`: stdin JSON `RetrieveRequest` (§7.3) — FTS5 `bm25()` with Porter tokenizer; category + featureId **boost**; **MMR-lite** (word Jaccard) for diversity; **maxTokens** trims `contextBlock`.
+- [x] **`contextBlock`** uses `[MEMORY CONTEXT]` … `[END MEMORY CONTEXT]` (§5.3).
+- [x] Tests: unit (`ftsQuery`, `mmr`, `retrieve`) + CLI integration for `retrieve`.
 
 ### Phase 3 — Run log + compact
 
