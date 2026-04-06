@@ -296,10 +296,10 @@ docs/
 
 ### Phase 1 — Storage + import
 
-- [ ] SQLite schema: `memories`, `chunks`, optional `embeddings` table.
-- [ ] FTS5 on chunk text (or memory content if no chunking yet).
-- [ ] `import-ralph-memory` from `.ralph-memory.json`.
-- [ ] `record` MVP (single entry, no embed).
+- [x] SQLite schema: `memories` + FTS5 virtual table `memory_fts` (full row content indexed; chunk table deferred to Phase 2+).
+- [x] FTS5 on memory content with triggers keeping `memory_fts` in sync.
+- [x] `layers v1 import-ralph-memory` — reads legacy `.ralph-memory.json` (Go `internal/memory` shape), idempotent via `legacy_id`.
+- [x] `layers v1 record` — stdin JSON per §7.3 `RecordRequest`; writes DB under `<projectRoot>/.layers/` (or `dataDir`).
 
 ### Phase 2 — Retrieve (FTS-only)
 
