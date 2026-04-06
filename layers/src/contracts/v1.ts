@@ -75,3 +75,43 @@ export type RetrieveResponse = {
     truncated: boolean;
   };
 };
+
+export type RunEventInput = {
+  sessionKey: string;
+  iteration?: number;
+  featureId?: number;
+  kind: string;
+  payload?: unknown;
+  ts?: string;
+};
+
+export type AppendRunRequest = {
+  projectRoot: string;
+  dataDir?: string;
+  /** Relative to data dir or absolute; default `run.jsonl` under `.layers` */
+  runLog?: string;
+  event: RunEventInput;
+};
+
+export type AppendRunResponse = {
+  ok: true;
+  path: string;
+};
+
+export type CompactRequest = {
+  projectRoot: string;
+  dataDir?: string;
+  runLog?: string;
+  /** Output snapshot path; default `context-snapshot.md` under data dir */
+  snapshot?: string;
+  maxEvents?: number;
+  maxBytes?: number;
+};
+
+export type CompactResponse = {
+  ok: true;
+  runLogPath: string;
+  snapshotPath: string;
+  eventCount: number;
+  bytesWritten: number;
+};

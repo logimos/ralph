@@ -1,6 +1,6 @@
 # Layers — TypeScript memory service for Ralph
 
-**Revision:** Phase 2 (`v1 retrieve`, FTS-only) in **`layers` v0.3.x** (see §10). Retrieve options (`topK`, `maxTokens`, `mmrLambda`) are **normalized** (clamped / integer / finite) in code to avoid invalid SQL or runaway context size.
+**Revision:** Phase 3 (`v1 append-run`, `v1 compact`) in **`layers` v0.4.x** (see §10). Run log defaults to **`<dataDir>/run.jsonl`**; snapshot defaults to **`<dataDir>/context-snapshot.md`**. Paths **`runLog` / `snapshot`** are resolved **inside the data directory** only (relative paths are joined; absolute paths must still lie under `dataDir` — no `..` escape). Large `run.jsonl` files use **tail reads** so compaction does not load the whole file when it exceeds ~2 MiB.
 
 This document specifies **Layers**: a **TypeScript** application in this repository that owns **durable memory** (record + retrieve + compaction) for the **Ralph loop**. It defines a **versioned contract** between **Ralph (Go)** and **Layers (TS)** so orchestration stays thin and memory stays evolvable.
 
@@ -184,8 +184,8 @@ Environment:
 |---------|-------|--------|---------|
 | `layers v1 retrieve` | `RetrieveRequest` JSON | `RetrieveResponse` JSON | Hybrid search → `contextBlock` |
 | `layers v1 record` | `RecordRequest` JSON | `RecordResponse` JSON | Add/update memories |
-| `layers v1 append-run` | `RunEvent` JSON | `AppendResponse` JSON | Layer A append |
-| `layers v1 compact` | `CompactRequest` JSON | `CompactResponse` JSON | Regenerate context snapshot |
+| `layers v1 append-run` | `AppendRunRequest` JSON | `AppendRunResponse` JSON | Layer A append (JSONL) |
+| `layers v1 compact` | `CompactRequest` JSON | `CompactResponse` JSON | Last‑N JSONL → `context-snapshot.md` |
 | `layers v1 import-ralph-memory` | (optional path) | `ImportResponse` JSON | Migrate `.ralph-memory.json` |
 | `layers v1 health` | — | `{ "ok": true, "version": "..." }` | Probe |
 
@@ -240,6 +240,39 @@ Environment:
 }
 ```
 
+**AppendRunRequest**
+
+```json
+{
+  "projectRoot": "/abs/path",
+  "runLog": "run.jsonl",
+  "event": {
+    "sessionKey": "ralph-2026-04-06",
+    "kind": "structured",
+    "iteration": 3,
+    "featureId": 12,
+    "payload": { "summary": "iteration complete" },
+    "ts": "2026-04-06T12:00:00.000Z"
+  }
+}
+```
+
+`kind`: `progress` | `commit` | `failure` | `note` | `structured`. Omit `ts` to let Layers set **now** (ISO8601).
+
+**CompactRequest**
+
+```json
+{
+  "projectRoot": "/abs/path",
+  "runLog": "run.jsonl",
+  "snapshot": "context-snapshot.md",
+  "maxEvents": 50,
+  "maxBytes": 32000
+}
+```
+
+Reads the last `maxEvents` non-empty lines from the run log, renders markdown (JSON pretty-printed per event), UTF‑8 byte‑truncates to `maxBytes` if needed.
+
 Errors: **exit code non-zero**, stderr human message; stdout may still carry `{ "error": { "code": "...", "message": "..." } }` for machine parsing.
 
 ### 7.4 Ralph integration points (Go)
@@ -266,8 +299,7 @@ layers/
     server/          # optional HTTP
     index/           # SQLite + FTS + optional vectors
     retrieve/        # hybrid + MMR
-    record/
-    compact/
+    run/             # JSONL append + compact snapshot
     import/          # .ralph-memory.json
   README.md
 docs/
@@ -312,8 +344,9 @@ docs/
 
 ### Phase 3 — Run log + compact
 
-- [ ] `append-run` JSONL + `compact` last‑N → **`context-snapshot.md`**.
-- [ ] Config: paths, max lines, max bytes.
+- [x] `layers v1 append-run`: stdin **`AppendRunRequest`** — append one **`RunEvent`** line to **`run.jsonl`** (default path under data dir; optional `runLog`).
+- [x] `layers v1 compact`: stdin **`CompactRequest`** — read last **`maxEvents`** lines from run log, write **`context-snapshot.md`** (default under data dir); UTF‑8 byte cap via **`maxBytes`**.
+- [x] Config: **`runLog`**, **`snapshot`**, **`maxEvents`** (default 50, clamped), **`maxBytes`** (default 32k, clamped).
 
 ### Phase 4 — Embeddings (optional provider)
 
