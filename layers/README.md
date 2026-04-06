@@ -34,6 +34,28 @@ After `npm run build -w layers`:
 node layers/dist/cli/main.js v1 health
 ```
 
+## HTTP (Phase 5)
+
+Same JSON bodies as CLI stdin, via **`POST`**:
+
+| Path                      | Body                       |
+| ------------------------- | -------------------------- |
+| `/v1/retrieve`            | `RetrieveRequest`          |
+| `/v1/record`              | `RecordRequest`            |
+| `/v1/append-run`          | `AppendRunRequest`         |
+| `/v1/compact`             | `CompactRequest`           |
+| `/v1/import-ralph-memory` | `ImportRalphMemoryRequest` |
+
+**`GET /v1/health`** — same JSON as `v1 health`.
+
+Start (default **`127.0.0.1:7847`**):
+
+```bash
+node layers/dist/cli/main.js v1 serve
+# optional: --host=127.0.0.1 --port=7847
+# env: LAYERS_HTTP_HOST, LAYERS_HTTP_PORT, LAYERS_HTTP_ALLOW_REMOTE=1 for non-loopback
+```
+
 **Phase 1 — record** (stdin JSON, see `docs/LAYERS_SPEC.md` §7.3):
 
 ```bash
@@ -89,7 +111,8 @@ Default snapshot path: `<projectRoot>/.layers/context-snapshot.md`. Override wit
 - **Phase 2**: `v1 retrieve` — FTS ranking, category/feature boosts, MMR-lite, `contextBlock` + token budget.
 - **Phase 3**: `v1 append-run`, `v1 compact` — JSONL run log + markdown snapshot.
 - **Phase 4**: optional OpenAI embeddings + hybrid retrieve; lazy embedding cache in SQLite.
-- **Next**: Phase 5 — HTTP server (`docs/LAYERS_SPEC.md`).
+- **Phase 5**: optional HTTP (`v1 serve`, loopback by default) — same JSON as CLI.
+- **Next**: Phase 6 — Ralph Go integration (`docs/LAYERS_SPEC.md`).
 
 ## Quick links
 
