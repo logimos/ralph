@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -97,5 +97,41 @@ describe("runCli record + import integration", () => {
     expect(out.contextBlock).toContain("[MEMORY CONTEXT]");
     expect(out.memories.length).toBeGreaterThan(0);
     expect(out.meta.ftsOnly).toBe(true);
+  });
+
+  it("v1 append-run then v1 compact writes context-snapshot.md", () => {
+    dir = mkdtempSync(join(tmpdir(), "layers-cli-phase3-"));
+    const ev = JSON.stringify({
+      projectRoot: dir,
+      event: {
+        sessionKey: "ralph-session-1",
+        kind: "structured",
+        iteration: 2,
+        featureId: 5,
+        payload: { status: "ok" },
+      },
+    });
+    const a = runCli(["v1", "append-run"], {}, ev);
+    expect(a.code).toBe(0);
+    const appendOut = JSON.parse(a.stdout) as { path: string };
+    expect(existsSync(appendOut.path)).toBe(true);
+
+    const compactStdin = JSON.stringify({
+      projectRoot: dir,
+      maxEvents: 10,
+      maxBytes: 50_000,
+    });
+    const c = runCli(["v1", "compact"], {}, compactStdin);
+    expect(c.code).toBe(0);
+    const compactOut = JSON.parse(c.stdout) as {
+      snapshotPath: string;
+      eventCount: number;
+      bytesWritten: number;
+    };
+    expect(compactOut.eventCount).toBe(1);
+    expect(compactOut.bytesWritten).toBeGreaterThan(0);
+    const snap = readFileSync(compactOut.snapshotPath, "utf8");
+    expect(snap).toContain("Layers run context");
+    expect(snap).toContain("ralph-session-1");
   });
 });

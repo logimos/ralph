@@ -62,12 +62,31 @@ echo '{"projectRoot":"/abs/repo","query":{"text":"auth JWT","category":"feature"
 
 Response includes `contextBlock` (Ralph-ready delimiters) and `memories` with scores. Embeddings are **not** used yet (`meta.ftsOnly` is always true until Phase 4).
 
+**Phase 3 — run log + snapshot** (Layer A, §3.3 / §7):
+
+Append one JSON line per event (default file `<projectRoot>/.layers/run.jsonl`):
+
+```bash
+echo '{"projectRoot":"/abs/repo","event":{"sessionKey":"s1","kind":"structured","payload":{"n":1}}}' \
+  | node layers/dist/cli/main.js v1 append-run
+```
+
+Rebuild bounded **`context-snapshot.md`** from the last N log lines:
+
+```bash
+echo '{"projectRoot":"/abs/repo","maxEvents":50,"maxBytes":32000}' \
+  | node layers/dist/cli/main.js v1 compact
+```
+
+Default snapshot path: `<projectRoot>/.layers/context-snapshot.md`. Override with `runLog` / `snapshot` (absolute or relative to the data directory).
+
 ## Status
 
 - **Phase 0**: scaffold, health, lint, tests, CI.
 - **Phase 1**: SQLite + FTS5, `v1 record`, `v1 import-ralph-memory` (idempotent).
 - **Phase 2**: `v1 retrieve` — FTS ranking, category/feature boosts, MMR-lite, `contextBlock` + token budget.
-- **Next**: Phase 3 — run log + compact (`docs/LAYERS_SPEC.md`).
+- **Phase 3**: `v1 append-run`, `v1 compact` — JSONL run log + markdown snapshot.
+- **Next**: Phase 4 — embeddings (`docs/LAYERS_SPEC.md`).
 
 ## Quick links
 
