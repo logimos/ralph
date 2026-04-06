@@ -209,7 +209,7 @@ Phases **0–6** in **`LAYERS_SPEC.md`** are **implemented** for the Layers serv
 | Hybrid / embeddings | N/A in old Ralph | **Yes** in Layers (optional OpenAI) | Extra **cost** if enabled; **Ollama** / other providers **not** in v1 Layers |
 | Chunking long memories | Mentioned as future | **Not** in v1 Layers | Long entries still single FTS row — see **`layers_spec_v2.md`** |
 | Verification gate | No deterministic test/typecheck gate | **Not** in Ralph loop | §7.2 still **open** — high leverage for correctness |
-| Multi-agent | Flag not in hot path | **Still true** | §7.6 unchanged |
+| Multi-agent | Flag not in hot path | **Partial** — **`-multi-agent` is rejected** when running iterations (clear error); **`-list-agents`** still works; see **`RALPH_ROADMAP.md`** | Orchestrated multi-agent loop **not** implemented |
 | Priority alignment | Prompt vs `extractCurrentFeatureFromPlans` | **Partially improved** for Layers retrieve (category + description from same plan row) | **Full** priority field + sort still **not** done (§7.1) |
 | Smarter orchestration | N/A | **Minimal** — retrieve/record/append/compact | **Policy-driven** use (re-retrieve on retry, record verify outcomes) — see **`RALPH_LAYERS_SPEC.md`** |
 
@@ -269,6 +269,8 @@ Either:
 - **Remove/disable** the flag from user-facing docs until implemented.
 
 **Why:** Avoids false expectations and allows real parallelization **only** where file locking and git conflicts are handled.
+
+**Status:** **`validateConfig`** now **fails fast** if **`-multi-agent`** is passed together with **`-iterations`** (main loop is still single-agent). **`flag.Usage`** text no longer implies parallel multi-agent runs. Full integration remains **backlog** — see **`docs/RALPH_ROADMAP.md`** §5.
 
 ### 7.7 Idempotency and commit strategy
 

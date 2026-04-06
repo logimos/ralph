@@ -800,3 +800,18 @@ func TestBuildPlanGenerationPrompt(t *testing.T) {
 		t.Error("Prompt should mention steps field")
 	}
 }
+
+func TestValidateConfig_rejectsMultiAgentWithIterations(t *testing.T) {
+	tmp := t.TempDir()
+	planPath := filepath.Join(tmp, "plan.json")
+	if err := os.WriteFile(planPath, []byte("[]"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.New()
+	cfg.PlanFile = planPath
+	cfg.Iterations = 1
+	cfg.EnableMultiAgent = true
+	if err := validateConfig(cfg); err == nil {
+		t.Fatal("expected error when -multi-agent is set with iterations")
+	}
+}
