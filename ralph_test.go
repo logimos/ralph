@@ -329,7 +329,7 @@ func TestBuildPrompt(t *testing.T) {
 		TestCmd:      "go test ./...",
 	}
 
-	p := prompt.BuildIterationPrompt(cfg, "", "")
+	p := prompt.BuildIterationPrompt(cfg, "", "", false)
 
 	// Check that prompt contains expected elements
 	if !strings.Contains(p, "test-plan.json") {
@@ -344,8 +344,8 @@ func TestBuildPrompt(t *testing.T) {
 	if !strings.Contains(p, "go test ./...") {
 		t.Error("Prompt should contain test command")
 	}
-	if !strings.Contains(p, "highest-priority feature") {
-		t.Error("Prompt should mention priority")
+	if !strings.Contains(p, "file order") {
+		t.Error("Prompt should describe file order when plan has no priority field")
 	}
 	if !strings.Contains(p, prompt.CompleteSignal) {
 		t.Error("Prompt should contain completion signal")
@@ -369,7 +369,7 @@ func TestBuildPromptAbsolutePaths(t *testing.T) {
 		TestCmd:      "go test ./...",
 	}
 
-	p := prompt.BuildIterationPrompt(cfg, "", "")
+	p := prompt.BuildIterationPrompt(cfg, "", "", false)
 
 	// The paths should be converted to absolute paths
 	// Check that the prompt starts with @ and contains a path separator

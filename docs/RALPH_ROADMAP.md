@@ -1,6 +1,6 @@
 # Ralph — product roadmap and burndown
 
-**Purpose:** Single place for **what Ralph claims vs what it does**, **what to build next**, and **acceptance-style notes**. Complements **`RALPH_LOOP_ENHANCEMENTS.md`** (analysis) and **`RALPH_LAYERS_SPEC.md`** (Layers orchestration).
+**Purpose:** Single place for **what Ralph claims vs what it does**, **what to build next**, and **acceptance-style notes**. Complements **`RALPH_LOOP_ENHANCEMENTS.md`** (analysis), **`RALPH_ENHANCEMENT_PHASES.md`** (numbered phases), and **`RALPH_LAYERS_SPEC.md`** (Layers orchestration).
 
 **Principles:** Easy to use; **honest** CLI and docs; **remove or fail fast** on flags that do nothing; delegate heavy memory to **Layers** where appropriate.
 
@@ -32,8 +32,8 @@
 
 | ID | Item | Status | Notes |
 |----|------|--------|--------|
-| P1 | Single source of truth for “current feature” (plan order vs priority field) | **Next** | See **`RALPH_LOOP_ENHANCEMENTS.md` §4.1**, §7.1 |
-| P2 | Layers retrieve query uses same feature as scope/deferral | Partial | Same read as iteration tracking; prompt text may still say “highest priority” |
+| P1 | Single source of truth for “current feature” (plan order vs priority field) | **Done** | Optional **`priority`** in **`plan.json`**; **`plan.NextWorkFeature`**; prompt matches — **`RALPH_ENHANCEMENT_PHASES.md` Phase 1** |
+| P2 | Layers retrieve query uses same feature as scope/deferral | **Partial** | Same **`NextWorkFeature`** as scope; prompt text aligned when **`priority`** used |
 
 ### 3. Bounded context (token cost)
 
@@ -46,7 +46,7 @@
 
 | ID | Item | Status | Notes |
 |----|------|--------|--------|
-| V1 | Optional **verify gate** (typecheck/test after agent) | Backlog | **`RALPH_LOOP_ENHANCEMENTS.md` §7.2** |
+| V1 | Optional **verify gate** (typecheck/test after agent) | **Next** | **`RALPH_ENHANCEMENT_PHASES.md` Phase 2**; **`RALPH_LOOP_ENHANCEMENTS.md` §7.2** |
 
 ### 5. Multi-agent (future)
 
@@ -68,4 +68,5 @@
 
 **v0.1** — Initial roadmap; **T1–T3** implemented on branch `cursor/ralph-roadmap-honesty`.  
 **v0.2** — **C1**: **`context-snapshot.md`** included in iteration **`@`** when Layers is enabled and the snapshot file exists (non-empty).  
-**v0.3** — **C2**: optional **`-progress-context-bytes`** / **`progress-context.txt`** (UTF-8 tail); **`@`** prefers bounded file over full **`progress.txt`** when enabled.
+**v0.3** — **C2**: optional **`-progress-context-bytes`** / **`progress-context.txt`** (UTF-8 tail); **`@`** prefers bounded file over full **`progress.txt`** when enabled.  
+**v0.4** — **`RALPH_ENHANCEMENT_PHASES.md`**: numbered phases; **P1** (priority alignment) in progress.

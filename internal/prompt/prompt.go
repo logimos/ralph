@@ -18,7 +18,8 @@ const (
 // layersSnapshotPath: optional absolute path to context-snapshot.md (Layers compact); "" to omit.
 // progressReadPath: path to use in @ for reading recent progress; normally the full progress file.
 // When bounded context is enabled, pass the path to progress-context.txt (or "") to fall back to full progress.
-func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string, progressReadPath string) string {
+// planUsesPriority: true if plan.json sets any non-zero "priority" field — prompt matches plan.NextWorkFeature ordering.
+func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string, progressReadPath string, planUsesPriority bool) string {
 	// Resolve absolute paths for the plan and progress files
 	planPath, err := filepath.Abs(cfg.PlanFile)
 	if err != nil {
@@ -58,8 +59,11 @@ func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string, progres
 			prompt += "The second @ file is a bounded UTF-8 tail of the progress log (full log is appended separately). "
 		}
 	}
-	prompt += "1. Find the highest-priority feature to work on and work only on that feature. "
-	prompt += "This should be the one YOU decide has the highest priority - not necessarily the first in the list. "
+	if planUsesPriority {
+		prompt += "1. Work on the next unfinished feature by priority: higher \"priority\" in plan.json comes first; when priorities tie or are unset, use file order. Work on only that feature. "
+	} else {
+		prompt += "1. Work on the next unfinished feature in plan.json file order (first untested, non-deferred). Work on only that feature. "
+	}
 	prompt += fmt.Sprintf("2. Check that the types check via %s and that the tests pass via %s. ", cfg.TypeCheckCmd, cfg.TestCmd)
 	prompt += "3. Update the PRD with the work that was done. "
 	prompt += fmt.Sprintf("4. Append your progress to %s (full chronological log). ", fullProgressPath)
@@ -77,7 +81,7 @@ func BuildPlanGenerationPrompt(notesPath, outputPath string) string {
 	prompt += "Analyze this notes file and create a comprehensive, step-by-step implementation plan in JSON format. "
 	prompt += "The plan should be saved as a JSON file at: " + outputPath + " "
 	prompt += "The JSON must be a valid array of plan objects, each with the following structure: "
-	prompt += "{ \"id\": number, \"category\": string (e.g., \"chore\", \"infra\", \"db\", \"ui\", \"feature\", \"other\"), "
+	prompt += "{ \"id\": number, \"priority\": number (optional, higher = sooner; 0 = default), \"category\": string (e.g., \"chore\", \"infra\", \"db\", \"ui\", \"feature\", \"other\"), "
 	prompt += "\"description\": string (clear, actionable description), "
 	prompt += "\"steps\": [string] (array of specific, implementable steps), "
 	prompt += "\"expected_output\": string (what success looks like), "
