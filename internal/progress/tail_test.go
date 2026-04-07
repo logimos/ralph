@@ -2,6 +2,8 @@ package progress
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 	"unicode/utf8"
 )
@@ -36,5 +38,21 @@ func TestUTF8Tail_multibyteBoundary(t *testing.T) {
 	got := UTF8Tail(s, 4)
 	if !utf8.Valid(got) {
 		t.Fatalf("invalid UTF-8: %q", got)
+	}
+}
+
+func TestReadUTF8TailFromFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "p.txt")
+	content := []byte("0123456789abcdefghij")
+	if err := os.WriteFile(p, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadUTF8TailFromFile(p, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "fghij" {
+		t.Fatalf("got %q", got)
 	}
 }

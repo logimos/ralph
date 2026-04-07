@@ -79,14 +79,10 @@ func syncProgressContext(cfg *config.Config) error {
 	if ctxPath == "" {
 		return nil
 	}
-	data, err := os.ReadFile(cfg.ProgressFile)
+	tail, err := progress.ReadUTF8TailFromFile(cfg.ProgressFile, cfg.ProgressContextMaxBytes)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-	tail := progress.UTF8Tail(data, cfg.ProgressContextMaxBytes)
 	hdr := fmt.Sprintf("# Bounded UTF-8 tail of %s (last %d bytes; append target for new notes: %s)\n\n",
 		cfg.ProgressFile, cfg.ProgressContextMaxBytes, cfg.ProgressFile)
 	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
@@ -1527,7 +1523,7 @@ func appendProgress(cfg *config.Config, message string) error {
 	}
 
 	if err := syncProgressContext(cfg); err != nil {
-		return fmt.Errorf("failed to update progress context file: %w", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to update progress context file: %v\n", err)
 	}
 	return nil
 }
