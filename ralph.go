@@ -44,6 +44,17 @@ func layersOpContext(parent context.Context) (context.Context, context.CancelFun
 	return context.WithTimeout(parent, layersOperationTimeout)
 }
 
+// runLayersCompact calls Layers compact with the standard timeout (shared by pre-prompt and end-of-run refresh).
+func runLayersCompact(lc *layers.Client, projectRoot, dataDir string) error {
+	creq := layers.CompactRequest{ProjectRoot: projectRoot}
+	if dataDir != "" {
+		creq.DataDir = dataDir
+	}
+	cctx, cancel := layersOpContext(context.Background())
+	defer cancel()
+	return lc.Compact(cctx, creq)
+}
+
 func main() {
 	cfg := parseFlags()
 
@@ -958,13 +969,7 @@ func runIterations(cfg *config.Config) error {
 		// Refresh Layers snapshot so @ context-snapshot.md exists before building the prompt (bounded run context).
 		layersSnapshotPath := ""
 		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
-			creq := layers.CompactRequest{ProjectRoot: layersProjectRoot}
-			if cfg.LayersDataDir != "" {
-				creq.DataDir = cfg.LayersDataDir
-			}
-			cctx, ccancel := layersOpContext(context.Background())
-			cerr := layersClient.Compact(cctx, creq)
-			ccancel()
+			cerr := runLayersCompact(layersClient, layersProjectRoot, cfg.LayersDataDir)
 			if cerr != nil && cfg.Verbose {
 				output.Debug("Layers compact (before prompt): %v", cerr)
 			}
@@ -1258,13 +1263,7 @@ func runIterations(cfg *config.Config) error {
 
 	// Bounded snapshot for prompts / review (optional)
 	if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
-		creq := layers.CompactRequest{ProjectRoot: layersProjectRoot}
-		if cfg.LayersDataDir != "" {
-			creq.DataDir = cfg.LayersDataDir
-		}
-		cctx, ccancel := layersOpContext(context.Background())
-		cerr := layersClient.Compact(cctx, creq)
-		ccancel()
+		cerr := runLayersCompact(layersClient, layersProjectRoot, cfg.LayersDataDir)
 		if cerr != nil && cfg.Verbose {
 			output.Debug("Layers compact: %v", cerr)
 		}

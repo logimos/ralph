@@ -32,9 +32,10 @@ func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string) string 
 
 	// Build the prompt string as a single line (matching bash script behavior)
 	// The bash script uses backslash continuation, which results in a single-line string
+	trimmedSnap := strings.TrimSpace(layersSnapshotPath)
 	var prompt string
-	if strings.TrimSpace(layersSnapshotPath) != "" {
-		snap := layersSnapshotPath
+	if trimmedSnap != "" {
+		snap := filepath.Clean(trimmedSnap)
 		prompt = fmt.Sprintf("@%s @%s @%s ", planPath, snap, progressPath)
 		prompt += "The second @ file is a bounded recent run snapshot (Layers compact output); prefer it for iteration context over reading the full progress file. "
 	} else {
