@@ -15,19 +15,28 @@ const (
 )
 
 // BuildIterationPrompt builds the prompt for an iteration.
-// If layersSnapshotPath is non-empty, it must be an absolute path to context-snapshot.md
-// (bounded Layers run log); it is included before the progress file so the agent loads
-// recent structured context first. Pass "" when Layers is disabled or the file is absent.
-func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string) string {
+// layersSnapshotPath: optional absolute path to context-snapshot.md (Layers compact); "" to omit.
+// progressReadPath: path to use in @ for reading recent progress; normally the full progress file.
+// When bounded context is enabled, pass the path to progress-context.txt (or "") to fall back to full progress.
+func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string, progressReadPath string) string {
 	// Resolve absolute paths for the plan and progress files
 	planPath, err := filepath.Abs(cfg.PlanFile)
 	if err != nil {
 		planPath = cfg.PlanFile
 	}
 
-	progressPath, err := filepath.Abs(cfg.ProgressFile)
+	fullProgressPath, err := filepath.Abs(cfg.ProgressFile)
 	if err != nil {
-		progressPath = cfg.ProgressFile
+		fullProgressPath = cfg.ProgressFile
+	}
+
+	readPath := strings.TrimSpace(progressReadPath)
+	if readPath == "" {
+		readPath = fullProgressPath
+	} else if p, err := filepath.Abs(readPath); err == nil {
+		readPath = filepath.Clean(p)
+	} else {
+		readPath = filepath.Clean(readPath)
 	}
 
 	// Build the prompt string as a single line (matching bash script behavior)
@@ -36,16 +45,24 @@ func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string) string 
 	var prompt string
 	if trimmedSnap != "" {
 		snap := filepath.Clean(trimmedSnap)
-		prompt = fmt.Sprintf("@%s @%s @%s ", planPath, snap, progressPath)
-		prompt += "The second @ file is a bounded recent run snapshot (Layers compact output); prefer it for iteration context over reading the full progress file. "
+		prompt = fmt.Sprintf("@%s @%s @%s ", planPath, snap, readPath)
+		prompt += "The second @ file is a bounded recent run snapshot (Layers compact output). "
+		if readPath != fullProgressPath {
+			prompt += "The third @ file is a bounded UTF-8 tail of the progress log; prefer the snapshot and bounded file for context over loading the full log. "
+		} else {
+			prompt += "Prefer the snapshot for recent structured context over reading the full progress file. "
+		}
 	} else {
-		prompt = fmt.Sprintf("@%s @%s ", planPath, progressPath)
+		prompt = fmt.Sprintf("@%s @%s ", planPath, readPath)
+		if readPath != fullProgressPath {
+			prompt += "The second @ file is a bounded UTF-8 tail of the progress log (full log is appended separately). "
+		}
 	}
 	prompt += "1. Find the highest-priority feature to work on and work only on that feature. "
 	prompt += "This should be the one YOU decide has the highest priority - not necessarily the first in the list. "
 	prompt += fmt.Sprintf("2. Check that the types check via %s and that the tests pass via %s. ", cfg.TypeCheckCmd, cfg.TestCmd)
 	prompt += "3. Update the PRD with the work that was done. "
-	prompt += "4. Append your progress to the progress file (last @ path above). "
+	prompt += fmt.Sprintf("4. Append your progress to %s (full chronological log). ", fullProgressPath)
 	prompt += "Use this to leave a note for the next person working in the codebase. "
 	prompt += "5. Make a git commit of that feature. "
 	prompt += "ONLY WORK ON A SINGLE FEATURE. "

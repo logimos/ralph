@@ -329,7 +329,7 @@ func TestBuildPrompt(t *testing.T) {
 		TestCmd:      "go test ./...",
 	}
 
-	p := prompt.BuildIterationPrompt(cfg, "")
+	p := prompt.BuildIterationPrompt(cfg, "", "")
 
 	// Check that prompt contains expected elements
 	if !strings.Contains(p, "test-plan.json") {
@@ -369,7 +369,7 @@ func TestBuildPromptAbsolutePaths(t *testing.T) {
 		TestCmd:      "go test ./...",
 	}
 
-	p := prompt.BuildIterationPrompt(cfg, "")
+	p := prompt.BuildIterationPrompt(cfg, "", "")
 
 	// The paths should be converted to absolute paths
 	// Check that the prompt starts with @ and contains a path separator
@@ -674,9 +674,12 @@ func TestAppendProgress(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	progressFile := filepath.Join(tempDir, "progress.txt")
+	cfg := &config.Config{
+		ProgressFile: progressFile,
+	}
 
 	// Test appending to new file
-	if err := appendProgress(progressFile, "First message"); err != nil {
+	if err := appendProgress(cfg, "First message"); err != nil {
 		t.Fatalf("appendProgress() error = %v", err)
 	}
 
@@ -690,7 +693,7 @@ func TestAppendProgress(t *testing.T) {
 	}
 
 	// Test appending second message
-	if err := appendProgress(progressFile, "Second message"); err != nil {
+	if err := appendProgress(cfg, "Second message"); err != nil {
 		t.Fatalf("appendProgress() second call error = %v", err)
 	}
 
@@ -708,6 +711,28 @@ func TestAppendProgress(t *testing.T) {
 	// Verify timestamp format
 	if !strings.Contains(string(content), "[") || !strings.Contains(string(content), "]") {
 		t.Error("Progress entries should have timestamps in brackets")
+	}
+}
+
+// TestAppendProgress_syncsContextTail tests optional bounded progress-context file.
+func TestAppendProgress_syncsContextTail(t *testing.T) {
+	tempDir := t.TempDir()
+	progressFile := filepath.Join(tempDir, "progress.txt")
+	ctxFile := filepath.Join(tempDir, "progress-context.txt")
+	cfg := &config.Config{
+		ProgressFile:            progressFile,
+		ProgressContextMaxBytes: 256,
+		ProgressContextFile:     filepath.Base(ctxFile),
+	}
+	if err := appendProgress(cfg, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(ctxFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "hello") {
+		t.Fatalf("context file missing message: %s", b)
 	}
 }
 

@@ -6,6 +6,8 @@ const (
 	DefaultPlanFile = "plan.json"
 	// DefaultProgressFile is the default path for the progress file
 	DefaultProgressFile = "progress.txt"
+	// DefaultProgressContextFile is the default bounded tail file (beside progress.txt)
+	DefaultProgressContextFile = "progress-context.txt"
 	// DefaultAgentCmd is the default AI agent command
 	DefaultAgentCmd = "cursor-agent"
 	// DefaultMaxRetries is the default maximum retries per feature before escalation
@@ -38,25 +40,29 @@ const (
 
 // Config holds the application configuration
 type Config struct {
-	PlanFile         string
-	ProgressFile     string
-	Iterations       int
-	AgentCmd         string
-	TypeCheckCmd     string
-	TestCmd          string
-	BuildSystem      string
-	Verbose          bool
-	ShowVersion      bool
-	ListStatus       bool
-	ListTested       bool
-	ListUntested     bool
-	GeneratePlan     bool
-	NotesFile        string
-	OutputPlanFile   string
-	ConfigFile       string // Path to config file (if specified via -config flag)
-	MaxRetries       int    // Maximum retries per feature before recovery escalation
-	RecoveryStrategy string // Recovery strategy: retry, skip, rollback
-	Environment      string // Environment override (local, github-actions, gitlab-ci, etc.)
+	PlanFile     string
+	ProgressFile string
+	// ProgressContextMaxBytes, if > 0, maintains a UTF-8-safe tail of progress.txt in ProgressContextFile for @ prompts (token cap).
+	ProgressContextMaxBytes int
+	// ProgressContextFile names the bounded tail file relative to the progress file's directory when empty (default: progress-context.txt).
+	ProgressContextFile string
+	Iterations          int
+	AgentCmd            string
+	TypeCheckCmd        string
+	TestCmd             string
+	BuildSystem         string
+	Verbose             bool
+	ShowVersion         bool
+	ListStatus          bool
+	ListTested          bool
+	ListUntested        bool
+	GeneratePlan        bool
+	NotesFile           string
+	OutputPlanFile      string
+	ConfigFile          string // Path to config file (if specified via -config flag)
+	MaxRetries          int    // Maximum retries per feature before recovery escalation
+	RecoveryStrategy    string // Recovery strategy: retry, skip, rollback
+	Environment         string // Environment override (local, github-actions, gitlab-ci, etc.)
 	// UI-related configuration
 	NoColor    bool   // Disable colored output
 	Quiet      bool   // Minimal output (errors only)

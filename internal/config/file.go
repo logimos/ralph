@@ -35,8 +35,10 @@ type FileConfig struct {
 	Test      string `json:"test,omitempty" yaml:"test,omitempty"`
 
 	// File paths
-	Plan     string `json:"plan,omitempty" yaml:"plan,omitempty"`
-	Progress string `json:"progress,omitempty" yaml:"progress,omitempty"`
+	Plan                 string `json:"plan,omitempty" yaml:"plan,omitempty"`
+	Progress             string `json:"progress,omitempty" yaml:"progress,omitempty"`
+	ProgressContextBytes int    `json:"progress_context_bytes,omitempty" yaml:"progress_context_bytes,omitempty"`
+	ProgressContextFile  string `json:"progress_context_file,omitempty" yaml:"progress_context_file,omitempty"`
 
 	// Execution settings
 	Iterations int  `json:"iterations,omitempty" yaml:"iterations,omitempty"`
@@ -75,15 +77,15 @@ type FileConfig struct {
 	GoalsFile string `json:"goals_file,omitempty" yaml:"goals_file,omitempty"` // Path to goals file
 
 	// Multi-agent settings
-	AgentsFile       string `json:"agents_file,omitempty" yaml:"agents_file,omitempty"`             // Path to multi-agent config file
-	ParallelAgents   int    `json:"parallel_agents,omitempty" yaml:"parallel_agents,omitempty"`     // Max parallel agents
+	AgentsFile       string `json:"agents_file,omitempty" yaml:"agents_file,omitempty"`               // Path to multi-agent config file
+	ParallelAgents   int    `json:"parallel_agents,omitempty" yaml:"parallel_agents,omitempty"`       // Max parallel agents
 	EnableMultiAgent bool   `json:"enable_multi_agent,omitempty" yaml:"enable_multi_agent,omitempty"` // Enable multi-agent mode
 
 	// Layers memory service (docs/LAYERS_SPEC.md)
-	LayersEnabled  bool   `json:"layers_enabled,omitempty" yaml:"layers_enabled,omitempty"`
-	LayersCommand  string `json:"layers_command,omitempty" yaml:"layers_command,omitempty"`
-	LayersURL      string `json:"layers_url,omitempty" yaml:"layers_url,omitempty"`
-	LayersDataDir  string `json:"layers_data_dir,omitempty" yaml:"layers_data_dir,omitempty"`
+	LayersEnabled bool   `json:"layers_enabled,omitempty" yaml:"layers_enabled,omitempty"`
+	LayersCommand string `json:"layers_command,omitempty" yaml:"layers_command,omitempty"`
+	LayersURL     string `json:"layers_url,omitempty" yaml:"layers_url,omitempty"`
+	LayersDataDir string `json:"layers_data_dir,omitempty" yaml:"layers_data_dir,omitempty"`
 }
 
 // DiscoverConfigFile searches for a configuration file in the current directory
@@ -311,6 +313,12 @@ func ApplyFileConfig(cfg *Config, fileCfg *FileConfig) {
 	}
 	if fileCfg.Progress != "" && cfg.ProgressFile == DefaultProgressFile {
 		cfg.ProgressFile = fileCfg.Progress
+	}
+	if fileCfg.ProgressContextBytes > 0 && cfg.ProgressContextMaxBytes == 0 {
+		cfg.ProgressContextMaxBytes = fileCfg.ProgressContextBytes
+	}
+	if fileCfg.ProgressContextFile != "" && cfg.ProgressContextFile == "" {
+		cfg.ProgressContextFile = fileCfg.ProgressContextFile
 	}
 
 	// Apply execution settings

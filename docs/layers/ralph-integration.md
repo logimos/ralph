@@ -31,6 +31,19 @@ Layers is **optional**. Without `-layers-enabled`, Ralph behaves as before (flat
 
 `layers_enabled`, `layers_command`, `layers_url`, `layers_data_dir` — merged with usual **file < CLI** precedence.
 
+### Bounded progress tail (optional; not Layers-specific)
+
+Reduce **`@`** token load from **`progress.txt`** without losing the full append-only log:
+
+| Flag | Meaning |
+|------|---------|
+| `-progress-context-bytes N` | If **N > 0**, Ralph rewrites a **UTF-8-safe tail** of **`-progress`** (last **N** bytes) into a sibling file after each append (default filename: **`progress-context.txt`** next to **`-progress`**) |
+| `-progress-context-file PATH` | Optional path or basename for that bounded file |
+
+Config file keys: **`progress_context_bytes`**, **`progress_context_file`**.
+
+When enabled and the bounded file is non-empty, the iteration **`@`** list uses it **instead of** the full **`progress.txt`** for reading; step 4 of the prompt still names the **full** **`progress.txt`** as the append target.
+
 ### Project root for Layers
 
 Ralph sets **`projectRoot`** to the **directory containing `plan.json`** (from `-plan`). Layers stores data under **`<projectRoot>/.layers/`** by default.
@@ -39,17 +52,19 @@ Ralph sets **`projectRoot`** to the **directory containing `plan.json`** (from `
 
 ## 3. What happens each iteration (high level)
 
-1. **Compact (if enabled):** Ralph calls **`compact`** so **`context-snapshot.md`** is up to date before building the iteration prompt. If that file exists and is non-empty, the prompt includes **`@<absolute-path>/context-snapshot.md`** between **`plan.json`** and **`progress.txt`**, with a short instruction to prefer the snapshot for iteration context.
+1. **Compact (Layers, if enabled):** Ralph calls **`compact`** so **`context-snapshot.md`** is up to date before building the iteration prompt. If that file exists and is non-empty, the prompt includes **`@<absolute-path>/context-snapshot.md`** after **`plan.json`**.
 
-2. **Retrieve (if enabled):** Ralph builds a **retrieve** query from the **current untested** plan feature (category, description, feature id when known). The **`contextBlock`** from Layers is **prepended** to the iteration prompt.  
+2. **Bounded progress (optional):** If **`-progress-context-bytes`** is set, Ralph refreshes **`progress-context.txt`** (or **`-progress-context-file`**) before the prompt. **`@`** order is **`plan.json`** → **`context-snapshot.md`** (if present) → **bounded progress file** (if non-empty), else **`plan.json`** → **`progress.txt`** when no snapshot and no bounded file.
+
+3. **Retrieve (if enabled):** Ralph builds a **retrieve** query from the **current untested** plan feature (category, description, feature id when known). The **`contextBlock`** from Layers is **prepended** to the iteration prompt.  
    - If retrieve **fails** or Layers is unavailable, Ralph **falls back** to `memory.BuildPromptContext` (flat JSON file).
 
-3. **Agent runs** as usual (`cursor-agent`, etc.).
+4. **Agent runs** as usual (`cursor-agent`, etc.).
 
-4. **`[REMEMBER:…]` markers** in stdout: if Layers is enabled, Ralph sends a **`record`** batch.  
+5. **`[REMEMBER:…]` markers** in stdout: if Layers is enabled, Ralph sends a **`record`** batch.  
    - If **`record` fails**, Ralph **warns** and writes memories to the **flat** `.ralph-memory.json` instead (durability over strict single-writer purity).
 
-5. **append-run:** Ralph appends a **structured** JSONL event (iteration number, feature id, etc.). Failures are **debug-logged** in verbose mode.
+6. **append-run:** Ralph appends a **structured** JSONL event (iteration number, feature id, etc.). Failures are **debug-logged** in verbose mode.
 
 ---
 
@@ -70,7 +85,7 @@ Ralph calls **`compact`** again so **`context-snapshot.md`** reflects the final 
 
 ## 6. Limitations (today)
 
-- **Progress file:** Ralph still **`@`**-references **`progress.txt`** (append-only archive). With Layers enabled, a **bounded** **`context-snapshot.md`** is also **`@`**-referenced when it exists; the prompt tells the agent to prefer the snapshot for recent context.
+- **Progress file:** Full **`progress.txt`** remains the append target. **`@`** may reference **`progress-context.txt`** (UTF-8 tail) and/or **`context-snapshot.md`** instead of loading the full log for context when those files are enabled and non-empty.
 - **Empty first run:** Until **`compact`** produces a non-empty **`context-snapshot.md`**, the prompt may omit the snapshot **`@`** (only plan + progress).
 - **Smarter orchestration** (re-query Layers after failures, policy-driven retrieve) is **not** implemented; see **`docs/RALPH_LAYERS_SPEC.md`**.
 
