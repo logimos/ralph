@@ -940,8 +940,8 @@ func runIterations(cfg *config.Config) error {
 			break
 		}
 
-		// Get current feature from plans (first untested, non-deferred)
-		detectedFeatureID, detectedSteps, detectedDesc, detectedCat := extractCurrentFeatureFromPlans(cfg.PlanFile)
+		// Get current feature from plans (highest priority first, then file order; skip tested/deferred)
+		detectedFeatureID, detectedSteps, detectedDesc, detectedCat, planUsesPriority := extractCurrentFeatureFromPlans(cfg.PlanFile)
 		if detectedFeatureID > 0 && detectedFeatureID != currentFeatureID {
 			// New feature detected - start tracking it
 			currentFeatureID = detectedFeatureID
@@ -1052,7 +1052,7 @@ func runIterations(cfg *config.Config) error {
 		}
 
 		// Build the prompt for the AI agent, including any recovery guidance
-		iterPrompt := prompt.BuildIterationPrompt(cfg, layersSnapshotPath, progressReadPath)
+		iterPrompt := prompt.BuildIterationPrompt(cfg, layersSnapshotPath, progressReadPath, planUsesPriority)
 
 		// Inject memory context: Layers retrieve when enabled, else flat JSON store
 		memoryContext := memStore.BuildPromptContext("", 10)
@@ -1757,20 +1757,15 @@ func printScopeSummary(output *ui.UI, scopeMgr *scope.Manager, verbose bool) {
 	}
 }
 
-// extractCurrentFeatureFromPlans tries to get the current feature being worked on
-func extractCurrentFeatureFromPlans(planFile string) (id int, steps int, description string, category string) {
+// extractCurrentFeatureFromPlans returns the orchestrator's "current" work feature: same rule as
+// plan.NextWorkFeature (priority desc, then file order). planUsesPriority is true if any row sets priority != 0.
+func extractCurrentFeatureFromPlans(planFile string) (id int, steps int, description string, category string, planUsesPriority bool) {
 	plans, err := plan.ReadFile(planFile)
 	if err != nil {
-		return 0, 0, "", ""
+		return 0, 0, "", "", false
 	}
-
-	// Find first untested, non-deferred feature
-	for _, p := range plans {
-		if !p.Tested && !p.Deferred {
-			return p.ID, len(p.Steps), p.Description, p.Category
-		}
-	}
-	return 0, 0, "", ""
+	id, steps, desc, cat := plan.NextWorkFeature(plans)
+	return id, steps, desc, cat, plan.FileUsesPriority(plans)
 }
 
 func layersClientFromConfig(cfg *config.Config) *layers.Client {
@@ -1846,14 +1841,8 @@ func handleReplanCommands(cfg *config.Config) error {
 			return fmt.Errorf("failed to load plan file: %w", err)
 		}
 
-		// Find current feature (first untested, non-deferred)
-		currentFeatureID := 0
-		for _, p := range plans {
-			if !p.Tested && !p.Deferred {
-				currentFeatureID = p.ID
-				break
-			}
-		}
+		// Current feature: same rule as runIterations (plan.NextWorkFeature)
+		currentFeatureID, _, _, _ := plan.NextWorkFeature(plans)
 
 		// Update state
 		replanMgr.UpdateState(currentFeatureID, 0, nil, plans)

@@ -65,12 +65,9 @@ The loop is surrounded by useful knobs: **recovery**, **auto-replan**, **scope l
 
 ### 4.1 “Priority” in the prompt vs. priority in code
 
-The iteration prompt tells the model to choose the **highest-priority** feature, not necessarily the first in the list (`internal/prompt/prompt.go`). Meanwhile, helpers such as `extractCurrentFeatureFromPlans` use the **first untested, non-deferred** row in file order (`ralph.go`). That **semantic mismatch** affects:
+**Status:** **`plan.json`** supports optional **`priority`** (higher = sooner). **`extractCurrentFeatureFromPlans`** uses **`plan.NextWorkFeature`** (priority descending, then file order). **`BuildIterationPrompt`** uses **priority-based** wording when any row sets **`priority` ≠ 0**, else **file-order** wording — see **`docs/RALPH_ENHANCEMENT_PHASES.md`** Phase 1.
 
-- Scope tracking (which feature ID is “current” for deferral and failure attribution).
-- Mental model: users think the orchestrator enforces priority; it mostly does not.
-
-**Loop optimization implication:** Either make priority **explicit** in data (e.g. `priority` field, stable sort) and use it everywhere, or simplify the prompt to “work on the next unfinished feature according to plan order.” Mixed messages waste iterations and model reasoning.
+Remaining edge cases: replan/UX that still assume “first row only”; document as you tighten.
 
 ### 4.2 No closed-loop verification of “done”
 
@@ -210,7 +207,7 @@ Phases **0–6** in **`LAYERS_SPEC.md`** are **implemented** for the Layers serv
 | Chunking long memories | Mentioned as future | **Not** in v1 Layers | Long entries still single FTS row — see **`layers_spec_v2.md`** |
 | Verification gate | No deterministic test/typecheck gate | **Not** in Ralph loop | §7.2 still **open** — high leverage for correctness |
 | Multi-agent | Flag not in hot path | **Partial** — **`-multi-agent` is rejected** when running iterations (clear error); **`-list-agents`** still works; see **`RALPH_ROADMAP.md`** | Orchestrated multi-agent loop **not** implemented |
-| Priority alignment | Prompt vs `extractCurrentFeatureFromPlans` | **Partially improved** for Layers retrieve (category + description from same plan row) | **Full** priority field + sort still **not** done (§7.1) |
+| Priority alignment | Prompt vs `extractCurrentFeatureFromPlans` | **Improved** — optional **`priority`** + **`NextWorkFeature`**; prompt matches when priorities used | Replan / other paths may still need the same rule (§7.1) |
 | Smarter orchestration | N/A | **Minimal** — retrieve/record/append/compact | **Policy-driven** use (re-retrieve on retry, record verify outcomes) — see **`RALPH_LAYERS_SPEC.md`** |
 
 **How to fix (directional):** Prefer **`RALPH_LAYERS_SPEC.md`** for Ralph-side behavior; **`layers_spec_v2.md`** for the TS service evolution; keep **§7** below for non-Layers loop work (verify gate, multi-agent, etc.).
@@ -343,7 +340,7 @@ The interaction with **Cursor** is entirely through the **CLI and `@` file refer
 1. **Verify gate** (typecheck/test in Ralph) + structured capture of results — **still open** (§7.2).  
 2. **Split progress for context** (§7.10): `@` **bounded** context + archive full history — **Layers `compact` / snapshot** is **`@`**-included when enabled; **highest remaining token win** is **not** attaching unbounded **`progress.txt`** (see **C2**).  
 3. **Memory retrieval** (§7.11) — **largely in Layers**; Ralph: expose/tune retrieve options; optional **remove redundant** flat context when Layers succeeds.  
-4. **Priority field** + consistent feature selection + prompt alignment — **still open** (§4.1, §7.1).  
+4. **Priority field** + consistent feature selection + prompt alignment — **partially done** (§4.1); extend to replan paths if needed (§7.1).  
 5. **Structured iteration lines** (§7.12) — **partial** via **`append-run`**; tighten schema + prompt.  
 6. **Replan trigger** tuning and incremental replan path.  
 7. **Multi-agent** integration or config cleanup.
@@ -359,6 +356,6 @@ This ordering front-loads **deterministic correctness**, **context caps**, and *
 | **Layers TS service** | `docs/LAYERS_SPEC.md` (v1), `docs/layers_spec_v2.md` (gaps) | API, storage, embeddings, HTTP |
 | **Ralph + Layers behavior** | `docs/RALPH_LAYERS_SPEC.md` | Smarter retrieve/record, snapshot in prompt, policy |
 | **Operator docs** | `docs/layers/README.md`, `user-guide.md`, `ralph-integration.md` | How to run and configure |
-| **Loop-wide** | This document (§6.6, §7.x status) | Orchestrator, Cursor, cost, verification |
+| **Loop-wide** | This document (§6.6, §7.x status), **`RALPH_ENHANCEMENT_PHASES.md`** | Orchestrator, Cursor, cost, verification |
 
 **“Smarter choices” via Layers:** means using **retrieve** not only as a static preamble but as a **decision-time** tool (e.g. after failures, after replan, with different queries) and feeding **compact** output into **`@`** — specified in **`RALPH_LAYERS_SPEC.md` §3**.
