@@ -11,7 +11,7 @@
 | Phase | Name | Roadmap IDs | Primary docs | Status |
 |-------|------|-------------|--------------|--------|
 | **1** | **Plan priority + prompt alignment** | P1, P2 (prompt) | §4.1, §7.1 in **`RALPH_LOOP_ENHANCEMENTS.md`** | **Done** — optional **`priority`**; **`plan.NextWorkFeature`**; **`BuildIterationPrompt(..., planUsesPriority)`** |
-| **2** | **Verify gate** | V1 | §7.2 **`RALPH_LOOP_ENHANCEMENTS.md`** | Backlog |
+| **2** | **Verify gate** | V1 | §7.2 **`RALPH_LOOP_ENHANCEMENTS.md`** | **Next** (same as **`RALPH_ROADMAP.md`** V1) |
 | **3** | **Smarter Layers orchestration** | (extends P2) | **`RALPH_LAYERS_SPEC.md`** §3.2–3.4 | Backlog — re-retrieve on retry/failure, query tuning |
 | **4** | **Structured iteration / run log** | §7.3, §7.12 | **`RALPH_LOOP_ENHANCEMENTS.md`**, Layers **`append-run`** | Backlog — tighter schema, optional verify outcomes |
 | **5** | **Replan / recovery tuning** | §7.5, §7.8 | **`RALPH_LOOP_ENHANCEMENTS.md`** | Backlog |

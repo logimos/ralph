@@ -69,4 +69,4 @@
 **v0.1** — Initial roadmap; **T1–T3** implemented on branch `cursor/ralph-roadmap-honesty`.  
 **v0.2** — **C1**: **`context-snapshot.md`** included in iteration **`@`** when Layers is enabled and the snapshot file exists (non-empty).  
 **v0.3** — **C2**: optional **`-progress-context-bytes`** / **`progress-context.txt`** (UTF-8 tail); **`@`** prefers bounded file over full **`progress.txt`** when enabled.  
-**v0.4** — **`RALPH_ENHANCEMENT_PHASES.md`**: numbered phases; **P1** (priority alignment) in progress.
+**v0.4** — **`RALPH_ENHANCEMENT_PHASES.md`**: numbered phases; **P1** (priority alignment) **Done**.

@@ -940,7 +940,7 @@ func runIterations(cfg *config.Config) error {
 			break
 		}
 
-		// Get current feature from plans (first untested, non-deferred)
+		// Get current feature from plans (highest priority first, then file order; skip tested/deferred)
 		detectedFeatureID, detectedSteps, detectedDesc, detectedCat, planUsesPriority := extractCurrentFeatureFromPlans(cfg.PlanFile)
 		if detectedFeatureID > 0 && detectedFeatureID != currentFeatureID {
 			// New feature detected - start tracking it
@@ -1841,14 +1841,8 @@ func handleReplanCommands(cfg *config.Config) error {
 			return fmt.Errorf("failed to load plan file: %w", err)
 		}
 
-		// Find current feature (first untested, non-deferred)
-		currentFeatureID := 0
-		for _, p := range plans {
-			if !p.Tested && !p.Deferred {
-				currentFeatureID = p.ID
-				break
-			}
-		}
+		// Current feature: same rule as runIterations (plan.NextWorkFeature)
+		currentFeatureID, _, _, _ := plan.NextWorkFeature(plans)
 
 		// Update state
 		replanMgr.UpdateState(currentFeatureID, 0, nil, plans)

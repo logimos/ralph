@@ -60,7 +60,7 @@ func BuildIterationPrompt(cfg *config.Config, layersSnapshotPath string, progres
 		}
 	}
 	if planUsesPriority {
-		prompt += "1. Work on the next unfinished feature by priority: higher \"priority\" in plan.json comes first; when priorities tie or are unset, use file order. Work on only that feature. "
+		prompt += "1. Work on the next unfinished feature by priority (first untested, non-deferred): higher \"priority\" in plan.json comes first; when priorities tie or are unset, use file order. Work on only that feature. "
 	} else {
 		prompt += "1. Work on the next unfinished feature in plan.json file order (first untested, non-deferred). Work on only that feature. "
 	}

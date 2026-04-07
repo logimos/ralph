@@ -19,6 +19,9 @@ func TestBuildIterationPrompt_planUsesPriority(t *testing.T) {
 	if !strings.Contains(p, `"priority"`) {
 		t.Fatal("expected priority wording when planUsesPriority")
 	}
+	if !strings.Contains(p, "first untested, non-deferred") {
+		t.Fatal("expected tested/deferred constraint in priority branch")
+	}
 	p2 := BuildIterationPrompt(cfg, "", "", false)
 	if strings.Contains(p2, `"priority"`) {
 		t.Fatal("did not expect priority JSON wording when planUsesPriority false")
