@@ -44,6 +44,17 @@ func layersOpContext(parent context.Context) (context.Context, context.CancelFun
 	return context.WithTimeout(parent, layersOperationTimeout)
 }
 
+// runLayersCompact calls Layers compact with the standard timeout (shared by pre-prompt and end-of-run refresh).
+func runLayersCompact(lc *layers.Client, projectRoot, dataDir string) error {
+	creq := layers.CompactRequest{ProjectRoot: projectRoot}
+	if dataDir != "" {
+		creq.DataDir = dataDir
+	}
+	cctx, cancel := layersOpContext(context.Background())
+	defer cancel()
+	return lc.Compact(cctx, creq)
+}
+
 func main() {
 	cfg := parseFlags()
 
@@ -955,8 +966,26 @@ func runIterations(cfg *config.Config) error {
 		// Capture active nudges before this iteration
 		activeNudges := nudgeStore.GetActive()
 
+		// Refresh Layers snapshot so @ context-snapshot.md exists before building the prompt (bounded run context).
+		layersSnapshotPath := ""
+		if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
+			cerr := runLayersCompact(layersClient, layersProjectRoot, cfg.LayersDataDir)
+			if cerr != nil && cfg.Verbose {
+				output.Debug("Layers compact (before prompt): %v", cerr)
+			}
+			snapPath, serr := layers.ContextSnapshotPath(layersProjectRoot, cfg.LayersDataDir)
+			if serr == nil {
+				if st, statErr := os.Stat(snapPath); statErr == nil && st.Size() > 0 {
+					layersSnapshotPath = snapPath
+					if cfg.Verbose {
+						output.Debug("Layers: including bounded snapshot in prompt: %s", snapPath)
+					}
+				}
+			}
+		}
+
 		// Build the prompt for the AI agent, including any recovery guidance
-		iterPrompt := prompt.BuildIterationPrompt(cfg)
+		iterPrompt := prompt.BuildIterationPrompt(cfg, layersSnapshotPath)
 
 		// Inject memory context: Layers retrieve when enabled, else flat JSON store
 		memoryContext := memStore.BuildPromptContext("", 10)
@@ -1234,13 +1263,7 @@ func runIterations(cfg *config.Config) error {
 
 	// Bounded snapshot for prompts / review (optional)
 	if cfg.LayersEnabled && layersProjectRoot != "" && layersClient != nil {
-		creq := layers.CompactRequest{ProjectRoot: layersProjectRoot}
-		if cfg.LayersDataDir != "" {
-			creq.DataDir = cfg.LayersDataDir
-		}
-		cctx, ccancel := layersOpContext(context.Background())
-		cerr := layersClient.Compact(cctx, creq)
-		ccancel()
+		cerr := runLayersCompact(layersClient, layersProjectRoot, cfg.LayersDataDir)
 		if cerr != nil && cfg.Verbose {
 			output.Debug("Layers compact: %v", cerr)
 		}

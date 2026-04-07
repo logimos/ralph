@@ -22,23 +22,22 @@
 | **Retrieve** | Before each iteration; query from first untested plan row; prepend `contextBlock`; 2m timeout; fallback to flat `BuildPromptContext` on failure |
 | **Record** | Batch `[REMEMBER:…]` → Layers; on failure, warn + write flat `.ralph-memory.json` |
 | **append-run** | One JSONL line per iteration (iteration + feature id) |
-| **compact** | End of `runIterations`; writes `context-snapshot.md` |
-| **progress.txt** | Unchanged; still referenced in prompt |
+| **compact** | Before each iteration prompt (when Layers enabled) and at end of `runIterations`; writes/refreshes `context-snapshot.md` |
+| **progress.txt** | Still **`@`**-referenced; when snapshot exists, prompt order is **plan → `context-snapshot.md` → `progress.txt`** with instruction to prefer the snapshot for recent context |
 
 ---
 
 ## 3. Smarter use of Layers (proposed behaviors)
 
-These are **spec-level intentions** for future Ralph PRs, not all implemented today.
+Some items below are **implemented**; others remain **future** work.
 
 ### 3.1 Inject compacted history, not raw progress
 
 **Problem:** `@progress.txt` grows without bound (see `RALPH_LOOP_ENHANCEMENTS.md` §5.1, §7.10).
 
-**Direction:**
+**Implemented (v0):** When **`-layers-enabled`**, Ralph runs **`compact`** before building the iteration prompt. If **`context-snapshot.md`** exists and is non-empty, the prompt includes **`@`** to its absolute path **between** **`plan.json`** and **`progress.txt`**, plus a line telling the agent to prefer the snapshot for recent iteration context.
 
-- Prefer **`@`** reference to **`context-snapshot.md`** (or a Ralph-generated **`progress-context.md`**) produced from Layers **`compact`** or a **tail-only** file.  
-- Keep **`progress.txt`** as append-only archive; stop feeding the full file to the agent when a bounded substitute exists.
+**Still open:** Dropping **`@progress.txt`** entirely, or a Ralph-maintained **`progress-context.md`** tail-only file without **`compact`** (see **`RALPH_ROADMAP.md` C2).
 
 ### 3.2 Re-retrieve after material events
 

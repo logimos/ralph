@@ -39,21 +39,23 @@ Ralph sets **`projectRoot`** to the **directory containing `plan.json`** (from `
 
 ## 3. What happens each iteration (high level)
 
-1. **Retrieve (if enabled):** Ralph builds a **retrieve** query from the **current untested** plan feature (category, description, feature id when known). The **`contextBlock`** from Layers is **prepended** to the iteration prompt.  
+1. **Compact (if enabled):** Ralph calls **`compact`** so **`context-snapshot.md`** is up to date before building the iteration prompt. If that file exists and is non-empty, the prompt includes **`@<absolute-path>/context-snapshot.md`** between **`plan.json`** and **`progress.txt`**, with a short instruction to prefer the snapshot for iteration context.
+
+2. **Retrieve (if enabled):** Ralph builds a **retrieve** query from the **current untested** plan feature (category, description, feature id when known). The **`contextBlock`** from Layers is **prepended** to the iteration prompt.  
    - If retrieve **fails** or Layers is unavailable, Ralph **falls back** to `memory.BuildPromptContext` (flat JSON file).
 
-2. **Agent runs** as usual (`cursor-agent`, etc.).
+3. **Agent runs** as usual (`cursor-agent`, etc.).
 
-3. **`[REMEMBER:…]` markers** in stdout: if Layers is enabled, Ralph sends a **`record`** batch.  
+4. **`[REMEMBER:…]` markers** in stdout: if Layers is enabled, Ralph sends a **`record`** batch.  
    - If **`record` fails**, Ralph **warns** and writes memories to the **flat** `.ralph-memory.json` instead (durability over strict single-writer purity).
 
-4. **append-run:** Ralph appends a **structured** JSONL event (iteration number, feature id, etc.). Failures are **debug-logged** in verbose mode.
+5. **append-run:** Ralph appends a **structured** JSONL event (iteration number, feature id, etc.). Failures are **debug-logged** in verbose mode.
 
 ---
 
 ## 4. End of `runIterations`
 
-Ralph calls **`compact`** once to refresh **`context-snapshot.md`** (bounded tail of the run log). This file is **not yet** automatically injected into the Cursor `@` prompt; it is available for **manual** `@` inclusion or future Ralph work (see **`docs/RALPH_LAYERS_SPEC.md`**).
+Ralph calls **`compact`** again so **`context-snapshot.md`** reflects the final run log state (it was also refreshed **before** each iteration prompt when Layers is enabled). Between iterations, **`append-run`** adds lines to the run log; the pre-prompt **`compact`** folds those into the snapshot for the **next** turn.
 
 ---
 
@@ -68,8 +70,8 @@ Ralph calls **`compact`** once to refresh **`context-snapshot.md`** (bounded tai
 
 ## 6. Limitations (today)
 
-- **Progress file:** Ralph still references **`progress.txt`** in the prompt as before; Layers does not replace it automatically.
-- **Snapshot:** `context-snapshot.md` is produced but **not** auto-attached to the agent prompt.
+- **Progress file:** Ralph still **`@`**-references **`progress.txt`** (append-only archive). With Layers enabled, a **bounded** **`context-snapshot.md`** is also **`@`**-referenced when it exists; the prompt tells the agent to prefer the snapshot for recent context.
+- **Empty first run:** Until **`compact`** produces a non-empty **`context-snapshot.md`**, the prompt may omit the snapshot **`@`** (only plan + progress).
 - **Smarter orchestration** (re-query Layers after failures, policy-driven retrieve) is **not** implemented; see **`docs/RALPH_LAYERS_SPEC.md`**.
 
 ---

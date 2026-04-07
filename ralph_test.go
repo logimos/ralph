@@ -329,7 +329,7 @@ func TestBuildPrompt(t *testing.T) {
 		TestCmd:      "go test ./...",
 	}
 
-	p := prompt.BuildIterationPrompt(cfg)
+	p := prompt.BuildIterationPrompt(cfg, "")
 
 	// Check that prompt contains expected elements
 	if !strings.Contains(p, "test-plan.json") {
@@ -369,7 +369,7 @@ func TestBuildPromptAbsolutePaths(t *testing.T) {
 		TestCmd:      "go test ./...",
 	}
 
-	p := prompt.BuildIterationPrompt(cfg)
+	p := prompt.BuildIterationPrompt(cfg, "")
 
 	// The paths should be converted to absolute paths
 	// Check that the prompt starts with @ and contains a path separator
