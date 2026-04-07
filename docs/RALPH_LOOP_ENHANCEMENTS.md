@@ -205,7 +205,7 @@ Phases **0–6** in **`LAYERS_SPEC.md`** are **implemented** for the Layers serv
 | Topic | Original issue (this doc) | Implemented? | Still weak / poorly implemented |
 |--------|---------------------------|--------------|----------------------------------|
 | Layer B retrieval | Flat memory, simple score | **Yes** — Layers FTS + MMR + optional embeddings; Ralph prepends **`contextBlock`** when **`-layers-enabled`** | Retrieve runs **once per iteration** at prompt build; no **re-query after failure**; query tied to first untested row — **priority mismatch** with prompt (§4.1) still matters |
-| Layer A history | Unbounded **`progress.txt`** | **Partial** — **`run.jsonl`** + **`compact` → `context-snapshot.md`**; Ralph **append-run** each iteration; **`@`** includes **bounded snapshot** when Layers enabled (plan → snapshot → progress) | **`progress.txt` still `@`-referenced** (archive); **full file** still loads in Cursor — **C2** / omit-progress work remains |
+| Layer A history | Unbounded **`progress.txt`** | **Partial** — **`run.jsonl`** + **`compact` → `context-snapshot.md`**; **`progress-context.txt`** optional (**`-progress-context-bytes`**); **`@`** uses snapshot and/or bounded progress when enabled | **Full** **`progress.txt`** may still load if bounded options off; **P1** priority alignment remains |
 | Hybrid / embeddings | N/A in old Ralph | **Yes** in Layers (optional OpenAI) | Extra **cost** if enabled; **Ollama** / other providers **not** in v1 Layers |
 | Chunking long memories | Mentioned as future | **Not** in v1 Layers | Long entries still single FTS row — see **`layers_spec_v2.md`** |
 | Verification gate | No deterministic test/typecheck gate | **Not** in Ralph loop | §7.2 still **open** — high leverage for correctness |

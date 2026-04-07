@@ -21,6 +21,7 @@ import (
 	"github.com/logimos/ralph/internal/multiagent"
 	"github.com/logimos/ralph/internal/nudge"
 	"github.com/logimos/ralph/internal/plan"
+	"github.com/logimos/ralph/internal/progress"
 	"github.com/logimos/ralph/internal/prompt"
 	"github.com/logimos/ralph/internal/recovery"
 	"github.com/logimos/ralph/internal/replan"
@@ -53,6 +54,41 @@ func runLayersCompact(lc *layers.Client, projectRoot, dataDir string) error {
 	cctx, cancel := layersOpContext(context.Background())
 	defer cancel()
 	return lc.Compact(cctx, creq)
+}
+
+// progressContextPathForPrompt returns the absolute path to the bounded tail file when enabled.
+func progressContextPathForPrompt(cfg *config.Config) string {
+	if cfg.ProgressContextMaxBytes <= 0 {
+		return ""
+	}
+	name := strings.TrimSpace(cfg.ProgressContextFile)
+	if name == "" {
+		name = config.DefaultProgressContextFile
+	}
+	if filepath.IsAbs(name) {
+		return filepath.Clean(name)
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(cfg.ProgressFile), name))
+}
+
+func syncProgressContext(cfg *config.Config) error {
+	if cfg.ProgressContextMaxBytes <= 0 {
+		return nil
+	}
+	ctxPath := progressContextPathForPrompt(cfg)
+	if ctxPath == "" {
+		return nil
+	}
+	tail, err := progress.ReadUTF8TailFromFile(cfg.ProgressFile, cfg.ProgressContextMaxBytes)
+	if err != nil {
+		return err
+	}
+	hdr := fmt.Sprintf("# Bounded UTF-8 tail of %s (last %d bytes; append target for new notes: %s)\n\n",
+		cfg.ProgressFile, cfg.ProgressContextMaxBytes, cfg.ProgressFile)
+	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(ctxPath, append([]byte(hdr), tail...), 0644)
 }
 
 func main() {
@@ -192,6 +228,8 @@ func parseFlags() *config.Config {
 
 	flag.StringVar(&cfg.PlanFile, "plan", config.DefaultPlanFile, "Path to the plan file (e.g., plan.json)")
 	flag.StringVar(&cfg.ProgressFile, "progress", config.DefaultProgressFile, "Path to the progress file (e.g., progress.txt)")
+	flag.IntVar(&cfg.ProgressContextMaxBytes, "progress-context-bytes", 0, "If >0, maintain a UTF-8 tail of -progress in a sibling file for @ (0=off; caps Cursor context)")
+	flag.StringVar(&cfg.ProgressContextFile, "progress-context-file", "", "Bounded progress tail path (default: progress-context.txt next to -progress)")
 	flag.IntVar(&cfg.Iterations, "iterations", 0, "Number of iterations to run (required)")
 	flag.StringVar(&cfg.AgentCmd, "agent", config.DefaultAgentCmd, "Command name for the AI agent CLI tool")
 	flag.StringVar(&cfg.BuildSystem, "build-system", "", "Build system preset (pnpm, npm, yarn, gradle, maven, cargo, go, python) or 'auto' for detection")
@@ -648,6 +686,12 @@ func applyFileConfigWithPrecedence(cfg *config.Config, fileCfg *config.FileConfi
 	if fileCfg.LayersDataDir != "" && !explicitFlags["layers-data-dir"] {
 		cfg.LayersDataDir = fileCfg.LayersDataDir
 	}
+	if fileCfg.ProgressContextBytes > 0 && !explicitFlags["progress-context-bytes"] {
+		cfg.ProgressContextMaxBytes = fileCfg.ProgressContextBytes
+	}
+	if fileCfg.ProgressContextFile != "" && !explicitFlags["progress-context-file"] {
+		cfg.ProgressContextFile = fileCfg.ProgressContextFile
+	}
 }
 
 func validateConfig(cfg *config.Config) error {
@@ -680,6 +724,10 @@ func validateConfig(cfg *config.Config) error {
 
 	if cfg.Iterations <= 0 {
 		return fmt.Errorf("iterations must be a positive integer (use -iterations flag)")
+	}
+
+	if cfg.ProgressContextMaxBytes < 0 {
+		return fmt.Errorf("-progress-context-bytes must be >= 0")
 	}
 
 	if cfg.EnableMultiAgent {
@@ -794,6 +842,10 @@ func runIterations(cfg *config.Config) error {
 	output.Header("Ralph - Iterative Development Workflow")
 	output.Info("Plan file: %s", cfg.PlanFile)
 	output.Info("Progress file: %s", cfg.ProgressFile)
+	if cfg.ProgressContextMaxBytes > 0 {
+		ctxPath := progressContextPathForPrompt(cfg)
+		output.Info("Progress context (bounded @): %s (last %d bytes)", ctxPath, cfg.ProgressContextMaxBytes)
+	}
 	output.Info("Iterations: %d", cfg.Iterations)
 	output.Info("Agent command: %s", cfg.AgentCmd)
 	output.Info("Recovery strategy: %s (max %d retries)", cfg.RecoveryStrategy, cfg.MaxRetries)
@@ -924,7 +976,7 @@ func runIterations(cfg *config.Config) error {
 			deferMsg := fmt.Sprintf("DEFERRED: Feature #%d - %s (iterations used: %d)",
 				currentFeatureID, scope.FormatDeferralReason(reason),
 				scopeMgr.GetFeatureScope(currentFeatureID).IterationsUsed)
-			appendProgress(cfg.ProgressFile, deferMsg)
+			appendProgress(cfg, deferMsg)
 
 			summary.FeaturesSkipped++
 
@@ -984,8 +1036,23 @@ func runIterations(cfg *config.Config) error {
 			}
 		}
 
+		progressReadPath := ""
+		if cfg.ProgressContextMaxBytes > 0 {
+			if err := syncProgressContext(cfg); err != nil && cfg.Verbose {
+				output.Debug("Progress context sync: %v", err)
+			}
+			if p := progressContextPathForPrompt(cfg); p != "" {
+				if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+					progressReadPath = p
+					if cfg.Verbose {
+						output.Debug("Using bounded progress context in @ prompt: %s", p)
+					}
+				}
+			}
+		}
+
 		// Build the prompt for the AI agent, including any recovery guidance
-		iterPrompt := prompt.BuildIterationPrompt(cfg, layersSnapshotPath)
+		iterPrompt := prompt.BuildIterationPrompt(cfg, layersSnapshotPath, progressReadPath)
 
 		// Inject memory context: Layers retrieve when enabled, else flat JSON store
 		memoryContext := memStore.BuildPromptContext("", 10)
@@ -1097,7 +1164,7 @@ func runIterations(cfg *config.Config) error {
 				// Log nudge acknowledgment to progress file
 				ackMsg := nudge.FormatAcknowledgment(activeNudges)
 				if ackMsg != "" {
-					appendProgress(cfg.ProgressFile, ackMsg)
+					appendProgress(cfg, ackMsg)
 				}
 				if cfg.Verbose {
 					output.Debug("Acknowledged %d nudge(s)", len(activeNudges))
@@ -1160,7 +1227,7 @@ func runIterations(cfg *config.Config) error {
 				consecutiveFailures++
 
 				// Log failure to progress file
-				logFailureToProgress(cfg.ProgressFile, failure)
+				logFailureToProgress(cfg, failure)
 
 				if recoveryResult.ShouldSkip {
 					output.Info("Recovery: %s", recoveryResult.Message)
@@ -1204,7 +1271,7 @@ func runIterations(cfg *config.Config) error {
 						// Update local plans reference
 						plans = replanResult.NewPlans
 						// Log replan to progress file
-						appendProgress(cfg.ProgressFile, fmt.Sprintf("REPLAN: %s triggered, strategy: %s", trigger, replanStrategyType))
+						appendProgress(cfg, fmt.Sprintf("REPLAN: %s triggered, strategy: %s", trigger, replanStrategyType))
 						// Reset consecutive failures after replanning
 						consecutiveFailures = 0
 					}
@@ -1294,11 +1361,11 @@ func containsFailureIndicators(output string) bool {
 }
 
 // logFailureToProgress appends failure information to the progress file
-func logFailureToProgress(progressFile string, failure *recovery.Failure) {
+func logFailureToProgress(cfg *config.Config, failure *recovery.Failure) {
 	message := fmt.Sprintf("FAILURE [%s]: %s (feature #%d, retry %d)",
 		failure.Type, failure.Message, failure.FeatureID, failure.RetryCount)
 
-	if err := appendProgress(progressFile, message); err != nil {
+	if err := appendProgress(cfg, message); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to log failure to progress file: %v\n", err)
 	}
 }
@@ -1440,9 +1507,9 @@ func generatePlanFromNotes(cfg *config.Config) error {
 	return nil
 }
 
-// appendProgress appends a message to the progress file
-func appendProgress(path string, message string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// appendProgress appends a message to the progress file and refreshes the optional bounded context file.
+func appendProgress(cfg *config.Config, message string) error {
+	f, err := os.OpenFile(cfg.ProgressFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open progress file: %w", err)
 	}
@@ -1455,6 +1522,9 @@ func appendProgress(path string, message string) error {
 		return fmt.Errorf("failed to write to progress file: %w", err)
 	}
 
+	if err := syncProgressContext(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to update progress context file: %v\n", err)
+	}
 	return nil
 }
 
@@ -1980,7 +2050,7 @@ func handleValidationCommands(cfg *config.Config) error {
 	// Log validation results to progress file
 	summaryMsg := fmt.Sprintf("VALIDATION: %s - %d/%d passed across %d features",
 		status, totalPassed, totalValidations, len(plansToValidate))
-	appendProgress(cfg.ProgressFile, summaryMsg)
+	appendProgress(cfg, summaryMsg)
 
 	// Return error if any validations failed
 	if totalFailed > 0 {
@@ -2357,7 +2427,7 @@ func decomposeGoal(cfg *config.Config, output *ui.UI, goalMgr *goals.Manager, go
 	// Log to progress file
 	progressMsg := fmt.Sprintf("GOAL DECOMPOSED: %q -> %d plan items (IDs: %v)",
 		goal.Description, len(decompResult.GeneratedPlans), getIDs(decompResult.GeneratedPlans))
-	appendProgress(cfg.ProgressFile, progressMsg)
+	appendProgress(cfg, progressMsg)
 
 	return nil
 }

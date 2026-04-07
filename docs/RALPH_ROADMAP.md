@@ -32,7 +32,7 @@
 
 | ID | Item | Status | Notes |
 |----|------|--------|--------|
-| P1 | Single source of truth for “current feature” (plan order vs priority field) | Backlog | See **`RALPH_LOOP_ENHANCEMENTS.md` §4.1**, §7.1 |
+| P1 | Single source of truth for “current feature” (plan order vs priority field) | **Next** | See **`RALPH_LOOP_ENHANCEMENTS.md` §4.1**, §7.1 |
 | P2 | Layers retrieve query uses same feature as scope/deferral | Partial | Same read as iteration tracking; prompt text may still say “highest priority” |
 
 ### 3. Bounded context (token cost)
@@ -40,7 +40,7 @@
 | ID | Item | Status | Notes |
 |----|------|--------|--------|
 | C1 | Prefer **`@`** bounded file (`context-snapshot.md` or generated tail) when Layers enabled | **Done** | **`compact`** before each prompt when **`-layers-enabled`**; **`@`** order is plan → snapshot (if non-empty) → **`progress.txt`**; see **`RALPH_LAYERS_SPEC.md` §3.1** |
-| C2 | Optional **`progress-context.txt`** maintained by Ralph | Backlog | Rule-based tail or compact step |
+| C2 | Optional **`progress-context.txt`** maintained by Ralph | **Done** | **`-progress-context-bytes N`** (and optional **`-progress-context-file`**) — UTF-8 tail of **`-progress`**; iteration **`@`** uses bounded file when non-empty; config: **`progress_context_bytes`** / **`progress_context_file`** |
 
 ### 4. Verification
 
@@ -67,4 +67,5 @@
 ## Revision
 
 **v0.1** — Initial roadmap; **T1–T3** implemented on branch `cursor/ralph-roadmap-honesty`.  
-**v0.2** — **C1**: **`context-snapshot.md`** included in iteration **`@`** when Layers is enabled and the snapshot file exists (non-empty).
+**v0.2** — **C1**: **`context-snapshot.md`** included in iteration **`@`** when Layers is enabled and the snapshot file exists (non-empty).  
+**v0.3** — **C2**: optional **`-progress-context-bytes`** / **`progress-context.txt`** (UTF-8 tail); **`@`** prefers bounded file over full **`progress.txt`** when enabled.
